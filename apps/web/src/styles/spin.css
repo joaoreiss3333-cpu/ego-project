@@ -1,0 +1,182 @@
+/* Giro: cabine de avaliação */
+.spin {
+  --cut: 20px;
+}
+.spin__screen {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  min-height: 330px;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(27, 41, 64, 0.55) 1px, transparent 1px) 0 0 / 22px 22px,
+    linear-gradient(90deg, rgba(27, 41, 64, 0.55) 1px, transparent 1px) 0 0 / 22px 22px,
+    #060a11;
+  border: 1px solid var(--line);
+}
+.spin__scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(76, 141, 255, 0.22) 48%, rgba(255, 255, 255, 0.5) 50%, rgba(76, 141, 255, 0.22) 52%, transparent 100%) 0 -120% / 100% 60% no-repeat;
+}
+.phase-eval .spin__scan {
+  opacity: 1;
+  animation: scan 0.7s linear infinite;
+}
+@keyframes scan {
+  from {
+    background-position: 0 -120%;
+  }
+  to {
+    background-position: 0 220%;
+  }
+}
+.spin__idle,
+.spin__eval {
+  display: grid;
+  gap: 6px;
+  position: relative;
+}
+.spin__idle p {
+  margin: 6px 0 0;
+  max-width: 56ch;
+  font-size: 14px;
+}
+.spin__roll {
+  font-family: var(--font-display);
+  font-size: clamp(56px, 9vw, 112px);
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+.spin__idle .spin__roll {
+  color: var(--line-2);
+}
+.phase-reveal .spin__roll {
+  color: var(--rc, #fff);
+}
+
+.ladder {
+  position: relative;
+  display: flex;
+  height: 44px;
+  border: 1px solid var(--line-2);
+  background: #0a111b;
+}
+.ladder__band {
+  position: relative;
+  min-width: 3px;
+  border-right: 1px solid #070b12;
+  background: color-mix(in srgb, var(--bc) 22%, transparent);
+  box-shadow: inset 0 -3px 0 var(--bc);
+  transition: background 0.3s;
+}
+.ladder__band span {
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bc);
+  white-space: nowrap;
+}
+.ladder__band:nth-child(n + 3) span {
+  display: none;
+}
+.ladder__band.is-hit {
+  background: color-mix(in srgb, var(--bc) 70%, transparent);
+  animation: band-hit 0.9s ease-out;
+}
+.ladder__band.is-hit span {
+  display: block;
+  color: #070b12;
+  font-weight: 600;
+}
+.ladder__band:nth-child(n + 3).is-hit span {
+  left: auto;
+  right: 4px;
+  transform: translateY(-26px);
+  color: var(--bc);
+}
+@keyframes band-hit {
+  0% {
+    box-shadow: inset 0 0 0 99px #fff;
+  }
+  100% {
+    box-shadow: inset 0 -3px 0 var(--bc);
+  }
+}
+.ladder__mark {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 3px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #070b12;
+}
+.ladder__mark::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -5px;
+  border: 6px solid transparent;
+  border-top-color: #fff;
+}
+
+.reveal {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  animation: reveal-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.reveal__img {
+  width: 140px;
+  height: 140px;
+  flex: none;
+}
+.reveal__rarity {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--rc);
+}
+.reveal__name {
+  font-family: var(--font-display);
+  font-size: clamp(54px, 8vw, 96px);
+  line-height: 0.85;
+  text-transform: uppercase;
+  color: #fff;
+}
+@keyframes reveal-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+    transform: translateX(-12px);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: none;
+  }
+}
+.spin__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+@media (max-width: 560px) {
+  .reveal {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ladder__band span {
+    display: none;
+  }
+}

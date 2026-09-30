@@ -93,6 +93,10 @@ pnpm web:dev        # http://localhost:3000
 
 Para produção: `pnpm --filter @ego/web build` e `pnpm --filter @ego/web start`.
 
+Para testar o site sem OAuth, em desenvolvimento local: `DEV_LOGIN=1` no `.env` faz a página `/entrar` aceitar qualquer Discord ID. Isso só existe fora de produção (`NODE_ENV !== 'production'`); um build de produção nunca liga esse login.
+
+Abas do site: Perfil, Personagem (Atributos, Linhagem, Loadout), Inventário (Equipamentos, Cosméticos, Materiais), Progresso (Missões, Despertares, Maestria, Modo Seleção), Giro, Ranking (Solo, Time), Partidas (histórico e replay) e Guias. A árvore de habilidades só é comprada no site.
+
 ## Comandos do bot
 
 `/criar-personagem`, `/perfil [usuario]`, `/atributos`, `/loadout`, `/guia [tema]`, `/partida criar modo tipo`, `/partida sair`, `/fila ranqueada modo`, `/fila sair`, `/treino drible|desarme|fisico|1v1`, `/selecao`, `/missoes`, `/girar`, `/inventario`, `/equipar`, `/ranking [modo]`, `/site`.
@@ -129,4 +133,5 @@ Gera `reports/simulation.md` e `reports/simulation.json` (gols por partida, vit�
 
 - **`unable to get local issuer certificate`** ao instalar ou rodar o Prisma: a rede usa uma CA própria. No Node 22+, rode com `NODE_OPTIONS=--use-system-ca`.
 - **Comandos não aparecem**: sem `DISCORD_GUILD_ID` o registro é global e pode levar até 1 hora.
+- **`Missing Access` ao registrar**: o bot ainda não está no servidor de `DISCORD_GUILD_ID`. O `pnpm bot:register` imprime o link de convite com as permissões certas; convide e rode de novo.
 - **Imagens com fonte errada**: rode `pnpm install` de novo (as fontes ficam em `assets/fonts`).

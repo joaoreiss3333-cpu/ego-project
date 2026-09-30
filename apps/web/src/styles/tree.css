@@ -1,0 +1,325 @@
+/* Árvore de linhagem */
+.tree {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .tree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.tree__canvas {
+  overflow-x: auto;
+  background:
+    linear-gradient(rgba(27, 41, 64, 0.5) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(90deg, rgba(27, 41, 64, 0.5) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+.tree__canvas svg {
+  width: 100%;
+  min-width: 600px;
+  height: auto;
+  overflow: visible;
+}
+.tree__edge {
+  fill: none;
+  stroke-width: 2.5;
+}
+.tree__edge.is-on {
+  stroke: var(--electric);
+}
+.tree__edge.is-avail {
+  stroke: var(--electric-2);
+  stroke-dasharray: 0.02 0.015;
+  opacity: 0.8;
+}
+.tree__edge.is-off {
+  stroke: var(--line-2);
+  stroke-dasharray: 0.015 0.02;
+}
+.tree__edge.is-lit {
+  stroke: #fff;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: edge-draw 0.6s ease-out forwards;
+}
+@keyframes edge-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.tree__node {
+  cursor: pointer;
+  outline: none;
+}
+.tree__plate {
+  fill: var(--panel);
+}
+.tree__outline {
+  fill: none;
+  stroke-width: 2.5;
+}
+.tree__icon {
+  transition: opacity 0.2s;
+}
+.tree__label {
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  fill: #fff;
+}
+.tree__cost {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  fill: var(--muted);
+}
+.tree__branch {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  fill: var(--electric-2);
+}
+.tree__badge {
+  fill: var(--bg);
+  stroke: var(--line-2);
+}
+.tree__badge-t {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--ink-2);
+  letter-spacing: 0.08em;
+}
+.tree__tick {
+  fill: var(--electric);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.tree__aw-bg {
+  fill: var(--line);
+}
+.tree__aw-fg {
+  fill: var(--amber);
+}
+
+/* estados */
+.st-comprado .tree__outline {
+  stroke: #fff;
+}
+.st-comprado .tree__cost {
+  fill: var(--electric-2);
+}
+.st-disponivel .tree__outline {
+  stroke: var(--electric);
+}
+.st-disponivel .tree__plate {
+  fill: #0f1d36;
+}
+.st-disponivel .tree__cost {
+  fill: #fff;
+}
+.st-disponivel .tree__icon {
+  opacity: 0.85;
+}
+.st-bloqueado .tree__outline {
+  stroke: var(--line-2);
+  stroke-dasharray: 5 4;
+}
+.st-bloqueado .tree__icon {
+  opacity: 0.22;
+  filter: grayscale(1);
+}
+.st-bloqueado .tree__label {
+  fill: var(--muted);
+}
+.st-despertar_pendente .tree__outline {
+  stroke: var(--amber);
+  stroke-dasharray: 7 4;
+}
+.st-despertar_pendente .tree__icon {
+  opacity: 0.45;
+}
+.st-despertar_pendente .tree__cost {
+  fill: var(--amber);
+}
+.ty-awakening.st-comprado .tree__outline {
+  stroke: var(--amber);
+}
+.tree__node:hover .tree__plate,
+.tree__node:focus-visible .tree__plate {
+  fill: #13223d;
+}
+.tree__node.is-sel .tree__outline {
+  stroke-width: 4;
+}
+.tree__node.is-sel .tree__label {
+  fill: var(--electric-2);
+}
+.tree__node:focus-visible .tree__outline {
+  stroke: #fff;
+  stroke-width: 4;
+}
+
+/* compra: o nó acende */
+.tree__node.is-lit {
+  animation: node-lit 1.1s ease-out;
+}
+.tree__node.is-lit .tree__outline {
+  animation: node-stroke 1.1s ease-out;
+}
+@keyframes node-lit {
+  0% {
+    filter: drop-shadow(0 0 0 rgba(76, 141, 255, 0));
+  }
+  25% {
+    filter: drop-shadow(0 0 16px rgba(76, 141, 255, 0.95));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(76, 141, 255, 0));
+  }
+}
+@keyframes node-stroke {
+  0% {
+    stroke: var(--electric-2);
+    stroke-width: 8;
+  }
+  40% {
+    stroke: #fff;
+    stroke-width: 5;
+  }
+  100% {
+    stroke-width: 2.5;
+  }
+}
+
+.tree__detail .tree__dname {
+  font-size: 30px;
+  line-height: 0.95;
+}
+.tree__text {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: #fff;
+}
+.st-tag.st-comprado {
+  --tc: #fff;
+}
+.st-tag.st-disponivel {
+  --tc: var(--electric-2);
+}
+.st-tag.st-bloqueado {
+  --tc: var(--muted);
+}
+.st-tag.st-despertar_pendente {
+  --tc: var(--amber);
+}
+.evo {
+  display: grid;
+  gap: 10px;
+}
+.evo p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.evo__after {
+  padding: 10px 12px;
+  border-left: 3px solid var(--electric);
+  background: rgba(31, 107, 255, 0.08);
+}
+.evo__after p {
+  color: #fff;
+}
+.counter {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-2);
+}
+.counter p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.aw {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--amber);
+  background: rgba(255, 176, 32, 0.06);
+}
+.aw p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.tree__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  align-items: center;
+}
+.tree__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lg {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  border: 2px solid;
+}
+.lg--comprado {
+  border-color: #fff;
+}
+.lg--disponivel {
+  border-color: var(--electric);
+  background: #0f1d36;
+}
+.lg--bloqueado {
+  border-color: var(--line-2);
+  border-style: dashed;
+}
+.lg--despertar {
+  border-color: var(--amber);
+  border-style: dashed;
+}
+
+/* Linhagens obtidas */
+.owned {
+  display: grid;
+  gap: 8px;
+}
+.owned__item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.owned__item.is-on {
+  border-color: var(--electric);
+}
+.owned__name {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  text-transform: uppercase;
+  line-height: 1;
+}

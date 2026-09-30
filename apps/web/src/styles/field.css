@@ -1,0 +1,309 @@
+/* Diagramas do campo (guias, landing) e replay */
+.fd {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.fd svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.fd figcaption {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.45;
+  border-left: 2px solid var(--line-2);
+  padding-left: 10px;
+}
+.fd__step {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--electric-2);
+}
+.fd-pitch {
+  fill: #0b1424;
+}
+.fd-area {
+  fill: rgba(31, 107, 255, 0.06);
+  stroke: rgba(76, 141, 255, 0.45);
+  stroke-width: 1.5;
+}
+.fd-grid line {
+  stroke: #1b2940;
+  stroke-width: 1;
+}
+.fd-mid {
+  fill: none;
+  stroke: #2a3d60;
+  stroke-width: 1.5;
+}
+.fd-border {
+  fill: none;
+  stroke: #3a5078;
+  stroke-width: 2;
+}
+.fd-goal {
+  fill: rgba(255, 255, 255, 0.1);
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+.fd-num {
+  font-family: var(--font-display);
+  font-size: 15px;
+}
+.fd-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  fill: #ffffff;
+  letter-spacing: 0.06em;
+  paint-order: stroke;
+  stroke: #070b12;
+  stroke-width: 3px;
+}
+.fd-alabel {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: #ffffff;
+  paint-order: stroke;
+  stroke: #070b12;
+  stroke-width: 3.5px;
+  letter-spacing: 0.04em;
+}
+.fd-mlabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fd-token.is-ghost {
+  opacity: 0.75;
+}
+.fd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fd-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fd-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+/* Matriz de duelo */
+.matrix {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  font-size: 13px;
+}
+.matrix__h {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 10px;
+  background: var(--panel-2);
+}
+.matrix__h--row {
+  color: #fff;
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+}
+.matrix__c {
+  padding: 10px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  min-height: 58px;
+  background: #0b1424;
+  border: 1px solid var(--line);
+}
+.matrix__c b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1;
+}
+.matrix__c span {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.matrix__c.is-atk {
+  background: rgba(31, 107, 255, 0.22);
+  border-color: var(--electric);
+}
+.matrix__c.is-def {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0 6px, transparent 6px 12px), #0b1424;
+  border-color: #c9d2e3;
+}
+
+/* Zonas do gol */
+.gz {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 6px;
+  border: 3px solid #fff;
+  border-bottom: 0;
+  max-width: 420px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 14px), repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 14px);
+}
+.gz__z {
+  display: grid;
+  gap: 2px;
+  padding: 10px 8px;
+  min-height: 64px;
+  border: 1px solid var(--line-2);
+  background: rgba(7, 11, 18, 0.7);
+  align-content: space-between;
+}
+.gz__z b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1;
+}
+.gz__z span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gz__z.is-shot {
+  border-color: var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.gz__z.is-exact {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #fff;
+}
+.gz__z.is-adj {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Replay */
+.replay {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .replay {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.replay__stage {
+  position: relative;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 14px;
+}
+.replay__stage svg {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+}
+.rp-tag {
+  font-size: 8.5px;
+}
+.replay__hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.score {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1;
+}
+.score__team {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.score__sep {
+  color: var(--line-2);
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.scrub {
+  width: 100%;
+  accent-color: var(--electric);
+}
+.rp-token {
+  transition: transform 0.36s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.rp-ball {
+  transition: transform 0.36s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.log li {
+  padding: 8px 10px;
+  border-left: 2px solid var(--line-2);
+  background: rgba(13, 20, 32, 0.8);
+  font-size: 14px;
+}
+.log li.is-key {
+  border-color: var(--electric);
+  color: #fff;
+}
+.events {
+  display: grid;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.events div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px dashed var(--line);
+  padding: 4px 0;
+}

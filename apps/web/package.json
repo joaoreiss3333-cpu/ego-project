@@ -1,0 +1,30 @@
+{
+  "name": "@ego/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next dev",
+    "build": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next build",
+    "start": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ego/content": "workspace:*",
+    "@ego/db": "workspace:*",
+    "@ego/engine": "workspace:*",
+    "@ego/render": "workspace:*",
+    "@prisma/client": "6.19.3",
+    "next": "15.5.26",
+    "next-auth": "5.0.0-beta.32",
+    "react": "19.1.9",
+    "react-dom": "19.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "prisma": "6.19.3",
+    "typescript": "5.9.3"
+  }
+}
