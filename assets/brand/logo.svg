@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 281 64" height="128" width="562">
+    
+    <g>
+      <path d="M10,0 H64 V54 L54,64 H0 V10 Z" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+      <rect x="9" y="9" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="9" y="25" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="9" y="41" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="25" y="9" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="25" y="25" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="25" y="41" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="41" y="9" width="12" height="12" fill="#1F6BFF" stroke="#1F6BFF" stroke-opacity="1" stroke-width="2"/><rect x="41" y="25" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/><rect x="41" y="41" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2"/>
+      <path d="M6 58 L58 6" stroke="#1F6BFF" stroke-width="3"/>
+    </g>
+    <text x="80" y="50" font-family="Anton, 'Barlow Condensed', Impact, sans-serif" font-size="54" fill="#FFFFFF" letter-spacing="1">EGO</text>
+    <text x="174" y="50" font-family="'IBM Plex Mono', monospace" font-size="18" font-weight="600" fill="#1F6BFF" letter-spacing="4">PROJECT</text>
+    <rect x="174" y="14" width="91" height="3" fill="#1F6BFF"/>
+  </svg>

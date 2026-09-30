@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="256" height="256">
+    <defs><clipPath id="c-chigiri"><path d="M22,2 H126 V106 L106,126 H2 V22 Z"/></clipPath></defs>
+    <g clip-path="url(#c-chigiri)">
+      <rect width="128" height="128" fill="#070B12"/>
+      <path d="M0 0 V128 M0 0 H128" stroke="#1B2940" stroke-width="1"/><path d="M16 0 V128 M0 16 H128" stroke="#1B2940" stroke-width="1"/><path d="M32 0 V128 M0 32 H128" stroke="#1B2940" stroke-width="1"/><path d="M48 0 V128 M0 48 H128" stroke="#1B2940" stroke-width="1"/><path d="M64 0 V128 M0 64 H128" stroke="#1B2940" stroke-width="1"/><path d="M80 0 V128 M0 80 H128" stroke="#1B2940" stroke-width="1"/><path d="M96 0 V128 M0 96 H128" stroke="#1B2940" stroke-width="1"/><path d="M112 0 V128 M0 112 H128" stroke="#1B2940" stroke-width="1"/><path d="M128 0 V128 M0 128 H128" stroke="#1B2940" stroke-width="1"/>
+      <path d="M-10 128 L128 -10 L128 20 L20 128 Z" fill="#B45CFF" fill-opacity="0.18"/>
+      
+    <path d="M64 30 C80 30 88 44 86 58 C85 68 78 76 70 79 L70 86 C92 90 108 102 112 128 L16 128 C20 102 36 90 58 86 L58 79 C50 76 43 68 42 58 C40 44 48 30 64 30 Z" fill="#10192A"/>
+    <path d="M44 50 C46 36 56 28 66 28 C80 28 90 38 88 52 C82 44 70 42 60 46 C54 48 48 50 44 50 Z" fill="#B45CFF" fill-opacity="0.85"/>
+      <text x="10" y="24" font-family="'IBM Plex Mono', monospace" font-size="10" font-weight="600" fill="#B45CFF" letter-spacing="1">CHIGIRI</text>
+      <text x="116" y="118" text-anchor="end" font-family="Anton, Impact, sans-serif" font-size="30" fill="#FFFFFF" fill-opacity="0.9">CH</text>
+    </g>
+    <path d="M22,2 H126 V106 L106,126 H2 V22 Z" fill="none" stroke="#B45CFF" stroke-width="4"/>
+  </svg>

@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ego
+      POSTGRES_PASSWORD: ego
+      POSTGRES_DB: ego
+    ports:
+      - "5432:5432"
+    volumes:
+      - ego_pg:/var/lib/postgresql/data
+volumes:
+  ego_pg:

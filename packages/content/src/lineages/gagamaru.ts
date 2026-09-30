@@ -1,0 +1,132 @@
+import type { LineageDef } from '../types';
+
+export const gagamaru: LineageDef = {
+  id: 'gagamaru',
+  name: 'Gagamaru',
+  rarity: 'rara',
+  tagline: 'O corpo chega onde a bola ia.',
+  description:
+    'Linhagem de físico e instinto. Protege o gol com o corpo inteiro e reage antes de pensar. Lenta com a bola, perigosa sem ela.',
+  caps: { velocidade: 6, drible: 6, passe: 5, chute: 6, fisico: 9, visao: 8, defesa: 8 },
+  naturalPosition: 'defensor',
+  playstyle: {
+    summary: 'Defende a área, fecha linhas de chute e sai jogando curto.',
+    actionBias: { conter: 0.2, fechar_linha: 0.15, proteger: 0.1 },
+  },
+  skills: [
+    {
+      id: 'muralha_viva',
+      lineageId: 'gagamaru',
+      name: 'Muralha Viva',
+      kind: 'flow',
+      effect: 'zone_radius',
+      stamina: 0,
+      cooldown: 0,
+      params: { radius: 2, turns: 2 },
+      requirement: { kind: 'any' },
+      target: 'none',
+      describe: (p) => `Por ${p.turns} lances, a zona de controle de Gagamaru tem raio ${p.radius}.`,
+      counterplay: 'Jogue pelo lado oposto do campo: a muralha é larga, mas fica em um lugar só.',
+      ai: {
+        when: 'Defendendo vantagem no placar ou segurando um ataque perto da área.',
+        priority: 7,
+        conditions: ['defending'],
+        bonusIf: ['leadingScore', 'opponentHasShotPosition', 'closeScoreLate'],
+      },
+    },
+    {
+      id: 'corpo_elastico',
+      lineageId: 'gagamaru',
+      name: 'Corpo Elástico',
+      kind: 'active',
+      effect: 'shot_block',
+      stamina: 15,
+      cooldown: 4,
+      params: { range: 2 },
+      requirement: { kind: 'defending' },
+      target: 'none',
+      describe: (p, s) =>
+        `Bloqueia um chute cuja linha passe a até ${p.range} casas dele: Físico + d10 contra o chute. Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'Não chute com Gagamaru por perto. Passe para o lado oposto e finalize de lá.',
+      ai: {
+        when: 'Quando o adversário tem posição de chute.',
+        priority: 8,
+        conditions: ['defending', 'opponentHasShotPosition'],
+      },
+    },
+    {
+      id: 'instinto_animal',
+      lineageId: 'gagamaru',
+      name: 'Instinto Animal',
+      kind: 'active',
+      effect: 'peek_carrier_action',
+      stamina: 10,
+      cooldown: 4,
+      params: {},
+      requirement: { kind: 'any' },
+      target: 'none',
+      reaction: true,
+      describe: (_p, s) =>
+        `Antes da resolução, vê a ação escolhida pelo portador adversário mais próximo (sem o destino) e pode refazer o próprio plano. Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'Ele vê a ação, não o destino. Escolha um destino que torne a ação difícil de parar.',
+      ai: {
+        when: 'Portador adversário perto e duelo provável.',
+        priority: 6,
+        conditions: ['defending', 'duelLikely'],
+      },
+    },
+    {
+      id: 'salto_imprevisivel',
+      lineageId: 'gagamaru',
+      name: 'Salto Imprevisível',
+      kind: 'active',
+      effect: 'free_jump',
+      stamina: 15,
+      cooldown: 3,
+      params: { cells: 3 },
+      requirement: { kind: 'any' },
+      target: 'none',
+      describe: (p, s) =>
+        `Move até ${p.cells} casas ignorando zonas de controle. Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'O salto passa pelas zonas, mas não pelos corpos. Ocupe a casa de destino.',
+      ai: {
+        when: 'Para escapar de uma marcação cerrada ou chegar numa sobra.',
+        priority: 5,
+        conditions: ['enemyAdjacent'],
+      },
+    },
+  ],
+  startNode: { id: 'gagamaru_flow', name: 'Muralha Viva', type: 'flow_start', cost: 0, grantsSkill: 'muralha_viva' },
+  branches: [
+    {
+      id: 'elastico',
+      name: 'Elástico',
+      nodes: [
+        { id: 'gagamaru_corpo', name: 'Corpo Elástico', type: 'skill', cost: 1, grantsSkill: 'corpo_elastico' },
+        {
+          id: 'gagamaru_corpo_2',
+          name: 'Corpo Elástico II',
+          type: 'evolution',
+          cost: 2,
+          requires: 'gagamaru_corpo',
+          evolves: { skillId: 'corpo_elastico', params: { range: 3 } },
+        },
+      ],
+    },
+    {
+      id: 'instinto',
+      name: 'Instinto',
+      nodes: [
+        { id: 'gagamaru_instinto', name: 'Instinto Animal', type: 'skill', cost: 1, grantsSkill: 'instinto_animal' },
+        {
+          id: 'gagamaru_salto',
+          name: 'Salto Imprevisível',
+          type: 'skill',
+          cost: 2,
+          requires: 'gagamaru_instinto',
+          grantsSkill: 'salto_imprevisivel',
+        },
+      ],
+    },
+  ],
+};

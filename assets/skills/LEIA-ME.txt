@@ -1,0 +1,7 @@
+Coloque aqui os ícones finais das habilidades:
+
+    assets/skills/{linhagemId}/{habilidadeId}.png
+
+Ex.: assets/skills/isagi/metavisao.png (quadrado, 256x256 ou maior).
+Se o arquivo não existir, o bot e o site usam o placeholder gerado (iniciais + cor da raridade).
+Prévia dos placeholders: assets/placeholders/skills/.

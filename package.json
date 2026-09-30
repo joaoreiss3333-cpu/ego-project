@@ -1,0 +1,28 @@
+{
+  "name": "ego-project",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "db:up": "docker compose up -d",
+    "db:migrate": "pnpm --filter @ego/db migrate",
+    "db:seed": "pnpm --filter @ego/db seed",
+    "db:generate": "pnpm --filter @ego/db generate",
+    "assets": "pnpm --filter @ego/render assets",
+    "bot:register": "pnpm --filter @ego/bot register",
+    "bot:dev": "pnpm --filter @ego/bot dev",
+    "web:dev": "pnpm --filter @ego/web dev",
+    "simulate": "pnpm --filter @ego/engine simulate",
+    "db:deploy": "pnpm --filter @ego/db deploy"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "tsx": "4.20.6",
+    "vitest": "3.2.7",
+    "@types/node": "22.18.0"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
+}

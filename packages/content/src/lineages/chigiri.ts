@@ -1,0 +1,132 @@
+import type { LineageDef } from '../types';
+
+export const chigiri: LineageDef = {
+  id: 'chigiri',
+  name: 'Chigiri',
+  rarity: 'epica',
+  tagline: 'Espaço aberto é sentença.',
+  description:
+    'Linhagem da velocidade pura. Pela ponta, em linha reta, ninguém alcança. Frágil no contato: precisa de espaço para existir.',
+  caps: { velocidade: 10, drible: 7, passe: 6, chute: 8, fisico: 4, visao: 6, defesa: 4 },
+  naturalPosition: 'atacante',
+  playstyle: {
+    summary: 'Ataca a profundidade pela lateral e finaliza em velocidade.',
+    actionBias: { conduzir: 0.2, desmarque: 0.25, chutar: 0.1 },
+  },
+  skills: [
+    {
+      id: 'pantera_vermelha',
+      lineageId: 'chigiri',
+      name: 'Pantera Vermelha',
+      kind: 'flow',
+      effect: 'panther',
+      stamina: 0,
+      cooldown: 0,
+      params: { moveMultiplier: 2 },
+      requirement: { kind: 'any' },
+      target: 'none',
+      describe: (p) =>
+        `Neste lance, Chigiri move ${p.moveMultiplier}x a distância normal e todo duelo contra ele usa vantagem de ataque.`,
+      counterplay: 'Ocupe o caminho com corpos: casas ocupadas continuam bloqueando.',
+      ai: {
+        when: 'Com campo aberto à frente, perto de virar chance de gol.',
+        priority: 9,
+        conditions: ['attacking'],
+        bonusIf: ['counterAttackFor', 'longStraightRun', 'closeScoreLate'],
+      },
+    },
+    {
+      id: 'faixa_aceleracao',
+      lineageId: 'chigiri',
+      name: 'Faixa de Aceleração',
+      kind: 'active',
+      effect: 'accel_trail',
+      stamina: 25,
+      cooldown: 3,
+      params: { minCells: 4, trailTurns: 1 },
+      requirement: { kind: 'any' },
+      target: 'none',
+      describe: (p, s) =>
+        `Se mover ${p.minCells}+ casas em linha reta, ignora zonas no movimento e deixa uma trilha por ${p.trailTurns} lance(s). Passes de aliados que terminam na trilha não podem ser interceptados. Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'Feche a casa final da corrida: sem 4 casas em linha reta, não há faixa.',
+      ai: {
+        when: 'Pela lateral, seguida de passe de um aliado para a trilha.',
+        priority: 8,
+        conditions: ['longStraightRun'],
+        bonusIf: ['onWing', 'counterAttackFor'],
+        combosWith: ['desmarque_espaco'],
+      },
+    },
+    {
+      id: 'arranque_tardio',
+      lineageId: 'chigiri',
+      name: 'Arranque Tardio',
+      kind: 'active',
+      effect: 'late_move',
+      stamina: 15,
+      cooldown: 4,
+      params: { moveFraction: 0.5 },
+      requirement: { kind: 'any' },
+      target: 'none',
+      reaction: true,
+      describe: (_p, s) =>
+        `Escolhe o destino depois de ver os planos de todos, e se move por último com metade do movimento normal. Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'Metade do movimento: marque de perto e ele não tem para onde fugir.',
+      ai: {
+        when: 'Quando a defesa adversária está indefinida e há uma sobra para atacar.',
+        priority: 5,
+        conditions: ['noBall', 'attacking'],
+        bonusIf: ['nearOpponentBox'],
+      },
+    },
+    {
+      id: 'chute_velocidade',
+      lineageId: 'chigiri',
+      name: 'Chute em Velocidade',
+      kind: 'active',
+      effect: 'speed_shot',
+      stamina: 15,
+      cooldown: 3,
+      params: { minCells: 3, maxBonus: 4 },
+      requirement: { kind: 'withBall', actions: ['chutar'] },
+      target: 'none',
+      describe: (p, s) =>
+        `Chute depois de mover ${p.minCells}+ casas no mesmo lance ganha bônus igual às casas percorridas (máximo +${p.maxBonus}). Fôlego ${s.stamina}, recarga ${s.cooldown}.`,
+      counterplay: 'Force Chigiri a parar antes do chute: bloqueie o corredor.',
+      ai: {
+        when: 'Depois de arrancada, com caminho livre até a área.',
+        priority: 8,
+        conditions: ['hasBall', 'nearOpponentBox'],
+        bonusIf: ['movedFarThisTurn'],
+      },
+    },
+  ],
+  startNode: { id: 'chigiri_flow', name: 'Pantera Vermelha', type: 'flow_start', cost: 0, grantsSkill: 'pantera_vermelha' },
+  branches: [
+    {
+      id: 'aceleracao',
+      name: 'Aceleração',
+      nodes: [
+        { id: 'chigiri_faixa', name: 'Faixa de Aceleração', type: 'skill', cost: 1, grantsSkill: 'faixa_aceleracao' },
+        {
+          id: 'chigiri_faixa_2',
+          name: 'Faixa II',
+          type: 'evolution',
+          cost: 2,
+          requires: 'chigiri_faixa',
+          evolves: { skillId: 'faixa_aceleracao', params: { trailTurns: 2 } },
+        },
+      ],
+    },
+    {
+      id: 'pantera',
+      name: 'Pantera',
+      nodes: [{ id: 'chigiri_arranque', name: 'Arranque Tardio', type: 'skill', cost: 2, grantsSkill: 'arranque_tardio' }],
+    },
+    {
+      id: 'chute',
+      name: 'Chute',
+      nodes: [{ id: 'chigiri_chute', name: 'Chute em Velocidade', type: 'skill', cost: 2, grantsSkill: 'chute_velocidade' }],
+    },
+  ],
+};
