@@ -1,0 +1,41 @@
+/** Gera imagens de exemplo em uma pasta (padrão: ./preview) para conferência visual. */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { autoTurn, botSlot, buildSetup, createMatch, keeperSlot, planBots, normalizePlans, publicRevelation, reachableCells, type MatchState } from '@ego/engine';
+import { arrowsFromRevelation, arrowsFromResult, overlaysFromResult, renderField, renderPlanning, renderStepsGif } from '../src';
+const out = process.argv[2] ?? 'preview';
+mkdirSync(out, { recursive: true });
+const lin = ['isagi', 'chigiri', 'lavinho', 'gagamaru', 'kuon', 'kuon'];
+const slots = [] as ReturnType<typeof botSlot>[];
+for (const t of ['A', 'B'] as const) {
+  for (let i = 0; i < 3; i++) slots.push(botSlot({ name: ['Isagi Y.', 'Chigiri H.', 'Reo M.', 'Gagamaru G.', 'Kuon W.', 'Bachira M.'][i + (t === 'B' ? 3 : 0)], lineageId: lin[i + (t === 'B' ? 3 : 0)], level: 20, personality: 'coletivo', position: 'atacante' }, `${t}${i + 1}`, t, 'elite'));
+  slots.push(keeperSlot(`${t}GK`, t, 20));
+}
+slots[0].trailId = 'rastro_faisca_azul';
+slots[1].frameId = 'moldura_grade';
+let s: MatchState = createMatch(buildSetup({ id: 'p', seed: process.argv[3] ?? 'preview', mode: '3v3', kind: 'simulacao', slots }));
+for (let i = 0; i < 5; i++) s = autoTurn(s, { botIds: slots.map((x) => x.id) }).result.state;
+const bots = planBots(s, slots.map((x) => x.id));
+const plans = normalizePlans(s, bots.plans);
+writeFileSync(join(out, 'field.png'), renderField(s, { showZones: true }));
+writeFileSync(join(out, 'reveal.png'), renderField(s, { arrows: arrowsFromRevelation(s, publicRevelation(s, plans)), hudRight: 'REVELAÇÃO' }));
+const holder = s.ball.holder ?? 'A1';
+writeFileSync(join(out, 'planning.png'), renderPlanning(s, holder, reachableCells(s, holder)));
+const r = autoTurn(s, { botIds: slots.map((x) => x.id) }).result;
+writeFileSync(join(out, 'result.png'), renderField(r.state, { arrows: arrowsFromResult(s, r), overlays: overlaysFromResult(s, r), hudRight: 'RESOLUÇÃO' }));
+writeFileSync(join(out, 'steps.gif'), renderStepsGif(s, r));
+console.log(r.log);
+import { renderProfileCard, renderResultCard, renderDuelTraining, renderPhysical, renderStage, renderGachaGif, renderGachaResult } from '../src';
+import { newDuelTraining, playDuelTraining, newPhysicalTraining, playPhysical } from '@ego/engine';
+import { SELECTION_GROUPS } from '@ego/content';
+const card = await renderProfileCard({ name: 'Yoichi Tanaka', number: 11, position: 'atacante', tokenColor: '#1F6BFF', level: 17, xp: 820, xpNeeded: 4580, lineage: { id: 'isagi', name: 'Isagi', rarity: 'lendaria' }, rank: { solo: 12, time: null, mmrSolo: 1184, mmrTime: 1000 }, attrs: { velocidade: 6, drible: 7, passe: 8, chute: 9, fisico: 5, visao: 10, defesa: 4 }, caps: { velocidade: 7, drible: 7, passe: 8, chute: 9, fisico: 6, visao: 10, defesa: 6 }, titleId: 'titulo_egoista', frameId: 'moldura_grade', marketValue: 3_450_000, stats: { goals: 34, assists: 12, matches: 40, wins: 22 }, serial: '0012-ISG' });
+writeFileSync(join(out, 'card.png'), card);
+const rs = r.state;
+writeFileSync(join(out, 'resultcard.png'), await renderResultCard({ score: { A: 3, B: 1 }, winner: 'A', mode: '3v3', kindLabel: 'Ranqueada', teamColors: { A: '#1F6BFF', B: '#F2F4F8' }, serial: 'M-0042', players: slots.map((x) => ({ name: x.name, number: x.number, team: x.team, lineageId: x.lineageId, rarity: 'rara', goals: rs.players[x.id].stats.goals + (x.id === 'A1' ? 2 : 0), assists: rs.players[x.id].stats.assists, ego: rs.players[x.id].ego + 3, chem: rs.players[x.id].chem + 1, dribbles: rs.players[x.id].stats.dribblesWon, reads: rs.players[x.id].stats.readsCorrect, saves: 0, isKeeper: x.isKeeper, isBot: true })) }));
+let dt = newDuelTraining('drible', 'x', slots[0].attrs, 20); dt = playDuelTraining(dt, 'driblar'); dt = playDuelTraining(dt, 'proteger');
+writeFileSync(join(out, 'train-duel.png'), renderDuelTraining(dt));
+let ph = newPhysicalTraining('y', slots[0].attrs); ph = playPhysical(ph, 0, 'sprint'); ph = playPhysical(ph, 1, 'ritmo');
+writeFileSync(join(out, 'train-phys.png'), renderPhysical(ph));
+writeFileSync(join(out, 'stage.png'), await renderStage(SELECTION_GROUPS[0].stages[3], SELECTION_GROUPS[0].name, { cleared: false, unlocked: true, wins: 0 }));
+writeFileSync(join(out, 'gacha.gif'), await renderGachaGif('lendaria', 'isagi', 'abc'));
+writeFileSync(join(out, 'gacha.png'), await renderGachaResult('mitica', 'lavinho', 'abc'));

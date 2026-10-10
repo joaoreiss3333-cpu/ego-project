@@ -1,0 +1,25 @@
+{
+  "name": "@ego/render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./svg": "./src/svg.ts",
+    "./assets": "./src/assets.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "assets": "tsx scripts/build-assets.ts",
+    "preview": "tsx scripts/preview.ts"
+  },
+  "dependencies": {
+    "@ego/content": "workspace:*",
+    "@ego/engine": "workspace:*",
+    "@napi-rs/canvas": "0.1.100",
+    "gifenc": "1.0.3"
+  }
+}

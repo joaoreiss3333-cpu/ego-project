@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Configuração por servidor do Discord.
+model GuildConfig {
+  guildId      String   @id
+  planSeconds  Int      @default(30)
+  gifEnabled   Boolean  @default(true)
+  /// { "1v1": 5, "2v2": 7, ... }
+  rarityBudget Json?
+  updatedAt    DateTime @updatedAt
+}
+
+model Character {
+  id               String    @id @default(cuid())
+  discordId        String    @unique
+  guildId          String
+  discordName      String    @default("")
+  name             String
+  number           Int
+  position         String
+  foot             String
+  tokenColor       String
+  level            Int       @default(1)
+  xp               Int       @default(0)
+  attrPoints       Int       @default(0)
+  lineagePoints    Int       @default(0)
+
+  velocidade       Int       @default(3)
+  drible           Int       @default(3)
+  passe            Int       @default(3)
+  chute            Int       @default(3)
+  fisico           Int       @default(3)
+  visao            Int       @default(3)
+  defesa           Int       @default(3)
+
+  tokVelocidade    Int       @default(0)
+  tokDrible        Int       @default(0)
+  tokPasse         Int       @default(0)
+  tokChute         Int       @default(0)
+  tokFisico        Int       @default(0)
+  tokVisao         Int       @default(0)
+  tokDefesa        Int       @default(0)
+
+  ienes            Int       @default(500)
+  coins            Int       @default(0)
+  marketValue      Int       @default(1000000)
+
+  lineageId        String?
+  freeSpin         Boolean   @default(true)
+  pityLegendary    Int       @default(0)
+  pityMythic       Int       @default(0)
+
+  titleId          String?
+  frameId          String?
+  trailId          String?
+  portraitPath     String?
+
+  energy           Int       @default(6)
+  energyUpdatedAt  DateTime  @default(now())
+  lastAttrResetAt  DateTime?
+  lastTreeResetAt  DateTime?
+  lastActiveAt     DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  /// Estatísticas gerais acumuladas.
+  goals            Int       @default(0)
+  assists          Int       @default(0)
+  matches          Int       @default(0)
+  wins             Int       @default(0)
+  dribblesWon      Int       @default(0)
+  readsCorrect     Int       @default(0)
+  saves            Int       @default(0)
+  tackles          Int       @default(0)
+
+  lineages         LineageProgress[]
+  mastery          SkillMastery[]
+  items            InventoryItem[]
+  cosmetics        CosmeticOwned[]
+  missions         MissionProgress[]
+  selection        SelectionProgress[]
+  ratings          Rating[]
+  gachaLogs        GachaLog[]
+  participations   MatchParticipant[]
+  dailyCounters    DailyCounter[]
+
+  @@index([guildId])
+}
+
+/// Progresso da árvore e loadout, salvo por linhagem.
+model LineageProgress {
+  id           String   @id @default(cuid())
+  characterId  String
+  lineageId    String
+  nodes        String[]
+  loadoutActive String[]
+  loadoutFlow  String?
+  /// [{ name, active: string[], flow: string }]
+  builds       Json     @default("[]")
+  obtainedAt   DateTime @default(now())
+  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, lineageId])
+}
+
+model SkillMastery {
+  id          String @id @default(cuid())
+  characterId String
+  skillId     String
+  uses        Int    @default(0)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, skillId])
+}
+
+model InventoryItem {
+  id          String   @id @default(cuid())
+  characterId String
+  itemId      String
+  level       Int      @default(0)
+  equipped    Boolean  @default(false)
+  obtainedAt  DateTime @default(now())
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId])
+}
+
+model CosmeticOwned {
+  id          String   @id @default(cuid())
+  characterId String
+  cosmeticId  String
+  obtainedAt  DateTime @default(now())
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, cosmeticId])
+}
+
+/// Missões diárias, semanais e de despertar. periodKey: "d:2026-09-30", "w:2026-W40" ou "awakening".
+model MissionProgress {
+  id          String   @id @default(cuid())
+  characterId String
+  missionId   String
+  periodKey   String
+  progress    Int      @default(0)
+  target      Int
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, missionId, periodKey])
+  @@index([characterId, periodKey])
+}
+
+model SelectionProgress {
+  id           String    @id @default(cuid())
+  characterId  String
+  stageId      String
+  wins         Int       @default(0)
+  attempts     Int       @default(0)
+  firstClearAt DateTime?
+  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, stageId])
+}
+
+model Season {
+  id        String   @id @default(cuid())
+  name      String
+  startsAt  DateTime
+  endsAt    DateTime
+  active    Boolean  @default(false)
+  /// Snapshot final do ranking.
+  snapshot  Json?
+  ratings   Rating[]
+}
+
+model Rating {
+  id          String   @id @default(cuid())
+  characterId String
+  seasonId    String
+  group       String
+  mmr         Int      @default(1000)
+  wins        Int      @default(0)
+  losses      Int      @default(0)
+  draws       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  season      Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, seasonId, group])
+  @@index([seasonId, group, mmr])
+}
+
+/// Log auditável de cada giro de linhagem.
+model GachaLog {
+  id            String    @id @default(cuid())
+  characterId   String
+  seed          String
+  roll          Float
+  rarity        String
+  lineageId     String
+  pityLegendaryBefore Int
+  pityMythicBefore    Int
+  forcedBy      String?
+  rates         Json
+  cost          Int
+  free          Boolean   @default(false)
+  decision      String?
+  decidedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  character     Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, createdAt])
+}
+
+model Match {
+  id          String    @id @default(cuid())
+  guildId     String
+  channelId   String?
+  messageId   String?
+  mode        String
+  kind        String
+  status      String
+  seed        String
+  stageId     String?
+  /// Configuração do motor (MatchSetup).
+  setup       Json
+  /// Estado atual do motor (snapshot a cada lance).
+  snapshot    Json?
+  /// Entradas finais de cada lance, para replay.
+  turns       Json      @default("[]")
+  result      Json?
+  flagged     Boolean   @default(false)
+  flagReason  String?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  participants MatchParticipant[]
+
+  @@index([guildId, status])
+  @@index([createdAt])
+}
+
+model MatchParticipant {
+  id          String   @id @default(cuid())
+  matchId     String
+  characterId String?
+  slotId      String
+  team        String
+  isKeeper    Boolean  @default(false)
+  isBot       Boolean  @default(false)
+  activeTurns Int      @default(0)
+  totalTurns  Int      @default(0)
+  stats       Json?
+  rewards     Json?
+  mmrDelta    Int?
+  match       Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([characterId])
+  @@index([matchId])
+}
+
+/// Contadores diários (retorno decrescente, energia etc.).
+model DailyCounter {
+  id          String   @id @default(cuid())
+  characterId String
+  dayKey      String
+  matches     Int      @default(0)
+  trainings   Int      @default(0)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, dayKey])
+}
+
+/// Registro de ações administrativas.
+model AdminLog {
+  id        String   @id @default(cuid())
+  guildId   String
+  adminId   String
+  action    String
+  targetId  String?
+  payload   Json?
+  createdAt DateTime @default(now())
+}

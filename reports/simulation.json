@@ -1,0 +1,307 @@
+{
+  "config": {
+    "matches": 1000,
+    "level": 20,
+    "difficulty": "elite",
+    "seed": "balance-v1",
+    "modes": {
+      "1v1": 539,
+      "2v2": 246,
+      "3v3": 215
+    }
+  },
+  "summary": {
+    "goalsPerMatch": 0.75,
+    "turnsPerMatch": 16,
+    "decisionAvgMs": 0.33,
+    "decisionMaxMs": 42,
+    "elapsedSeconds": 44.1
+  },
+  "scoreDistribution": {
+    "0x0": 572,
+    "1x0": 226,
+    "1x1": 61,
+    "2x0": 63,
+    "2x1": 34,
+    "2x2": 12,
+    "3x0": 12,
+    "3x1": 8,
+    "5x0": 1,
+    "3x2": 9,
+    "4x2": 1,
+    "4x1": 1
+  },
+  "winRateByRarity1v1": {
+    "Lendária": {
+      "partidas": 231,
+      "vitoria": 0.455,
+      "empate": 0.346,
+      "derrota": 0.199
+    },
+    "Comum": {
+      "partidas": 226,
+      "vitoria": 0.093,
+      "empate": 0.593,
+      "derrota": 0.314
+    },
+    "Épica": {
+      "partidas": 223,
+      "vitoria": 0.408,
+      "empate": 0.386,
+      "derrota": 0.206
+    },
+    "Rara": {
+      "partidas": 195,
+      "vitoria": 0,
+      "empate": 0.656,
+      "derrota": 0.344
+    },
+    "Mítica": {
+      "partidas": 203,
+      "vitoria": 0.256,
+      "empate": 0.552,
+      "derrota": 0.192
+    }
+  },
+  "byLineage": {
+    "isagi": {
+      "aparicoes": 635,
+      "vitoria": 0.231,
+      "golsPorPartida": 0.44,
+      "duelosVencidos": 0.438
+    },
+    "kuon": {
+      "aparicoes": 686,
+      "vitoria": 0.079,
+      "golsPorPartida": 0.09,
+      "duelosVencidos": 0.513
+    },
+    "chigiri": {
+      "aparicoes": 670,
+      "vitoria": 0.225,
+      "golsPorPartida": 0.39,
+      "duelosVencidos": 0.426
+    },
+    "gagamaru": {
+      "aparicoes": 661,
+      "vitoria": 0.048,
+      "golsPorPartida": 0.01,
+      "duelosVencidos": 0.558
+    },
+    "lavinho": {
+      "aparicoes": 700,
+      "vitoria": 0.13,
+      "golsPorPartida": 0.21,
+      "duelosVencidos": 0.544
+    }
+  },
+  "skills": {
+    "folego_inesgotavel": {
+      "nome": "Fôlego Inesgotável",
+      "linhagem": "kuon",
+      "tipo": "flow",
+      "equipadaEm": 686,
+      "usosComSucesso": 10,
+      "usosPorPartidaEquipada": 0.01,
+      "ativacoesDeFlow": 10
+    },
+    "arrancada": {
+      "nome": "Arrancada",
+      "linhagem": "kuon",
+      "tipo": "active",
+      "equipadaEm": 686,
+      "usosComSucesso": 1570,
+      "usosPorPartidaEquipada": 2.29,
+      "ativacoesDeFlow": 0
+    },
+    "carrinho": {
+      "nome": "Carrinho",
+      "linhagem": "kuon",
+      "tipo": "active",
+      "equipadaEm": 686,
+      "usosComSucesso": 109,
+      "usosPorPartidaEquipada": 0.16,
+      "ativacoesDeFlow": 0
+    },
+    "cobertura": {
+      "nome": "Cobertura",
+      "linhagem": "kuon",
+      "tipo": "active",
+      "equipadaEm": 686,
+      "usosComSucesso": 132,
+      "usosPorPartidaEquipada": 0.19,
+      "ativacoesDeFlow": 0
+    },
+    "muralha_viva": {
+      "nome": "Muralha Viva",
+      "linhagem": "gagamaru",
+      "tipo": "flow",
+      "equipadaEm": 661,
+      "usosComSucesso": 0,
+      "usosPorPartidaEquipada": 0,
+      "ativacoesDeFlow": 0
+    },
+    "corpo_elastico": {
+      "nome": "Corpo Elástico",
+      "linhagem": "gagamaru",
+      "tipo": "active",
+      "equipadaEm": 661,
+      "usosComSucesso": 28,
+      "usosPorPartidaEquipada": 0.04,
+      "ativacoesDeFlow": 0
+    },
+    "instinto_animal": {
+      "nome": "Instinto Animal",
+      "linhagem": "gagamaru",
+      "tipo": "active",
+      "equipadaEm": 661,
+      "usosComSucesso": 993,
+      "usosPorPartidaEquipada": 1.5,
+      "ativacoesDeFlow": 0
+    },
+    "salto_imprevisivel": {
+      "nome": "Salto Imprevisível",
+      "linhagem": "gagamaru",
+      "tipo": "active",
+      "equipadaEm": 661,
+      "usosComSucesso": 904,
+      "usosPorPartidaEquipada": 1.37,
+      "ativacoesDeFlow": 0
+    },
+    "pantera_vermelha": {
+      "nome": "Pantera Vermelha",
+      "linhagem": "chigiri",
+      "tipo": "flow",
+      "equipadaEm": 670,
+      "usosComSucesso": 16,
+      "usosPorPartidaEquipada": 0.02,
+      "ativacoesDeFlow": 16
+    },
+    "faixa_aceleracao": {
+      "nome": "Faixa de Aceleração",
+      "linhagem": "chigiri",
+      "tipo": "active",
+      "equipadaEm": 670,
+      "usosComSucesso": 570,
+      "usosPorPartidaEquipada": 0.85,
+      "ativacoesDeFlow": 0
+    },
+    "arranque_tardio": {
+      "nome": "Arranque Tardio",
+      "linhagem": "chigiri",
+      "tipo": "active",
+      "equipadaEm": 670,
+      "usosComSucesso": 32,
+      "usosPorPartidaEquipada": 0.05,
+      "ativacoesDeFlow": 0
+    },
+    "chute_velocidade": {
+      "nome": "Chute em Velocidade",
+      "linhagem": "chigiri",
+      "tipo": "active",
+      "equipadaEm": 670,
+      "usosComSucesso": 186,
+      "usosPorPartidaEquipada": 0.28,
+      "ativacoesDeFlow": 0
+    },
+    "ego_desperto": {
+      "nome": "Ego Desperto",
+      "linhagem": "isagi",
+      "tipo": "flow",
+      "equipadaEm": 316,
+      "usosComSucesso": 10,
+      "usosPorPartidaEquipada": 0.03,
+      "ativacoesDeFlow": 10
+    },
+    "leitura_espacial": {
+      "nome": "Leitura Espacial",
+      "linhagem": "isagi",
+      "tipo": "active",
+      "equipadaEm": 487,
+      "usosComSucesso": 1235,
+      "usosPorPartidaEquipada": 2.54,
+      "ativacoesDeFlow": 0
+    },
+    "metavisao": {
+      "nome": "Metavisão",
+      "linhagem": "isagi",
+      "tipo": "active",
+      "equipadaEm": 488,
+      "usosComSucesso": 1192,
+      "usosPorPartidaEquipada": 2.44,
+      "ativacoesDeFlow": 0
+    },
+    "chute_direto": {
+      "nome": "Chute Direto",
+      "linhagem": "isagi",
+      "tipo": "active",
+      "equipadaEm": 466,
+      "usosComSucesso": 11,
+      "usosPorPartidaEquipada": 0.02,
+      "ativacoesDeFlow": 0
+    },
+    "peca_que_encaixa": {
+      "nome": "Peça que Encaixa",
+      "linhagem": "isagi",
+      "tipo": "flow",
+      "equipadaEm": 319,
+      "usosComSucesso": 0,
+      "usosPorPartidaEquipada": 0,
+      "ativacoesDeFlow": 0
+    },
+    "devorar": {
+      "nome": "Devorar",
+      "linhagem": "isagi",
+      "tipo": "active",
+      "equipadaEm": 464,
+      "usosComSucesso": 130,
+      "usosPorPartidaEquipada": 0.28,
+      "ativacoesDeFlow": 0
+    },
+    "ginga_perfeita": {
+      "nome": "Ginga Perfeita",
+      "linhagem": "lavinho",
+      "tipo": "flow",
+      "equipadaEm": 700,
+      "usosComSucesso": 154,
+      "usosPorPartidaEquipada": 0.22,
+      "ativacoesDeFlow": 154
+    },
+    "ritmo_ginga": {
+      "nome": "Ritmo de Ginga",
+      "linhagem": "lavinho",
+      "tipo": "active",
+      "equipadaEm": 519,
+      "usosComSucesso": 557,
+      "usosPorPartidaEquipada": 1.07,
+      "ativacoesDeFlow": 0
+    },
+    "improviso": {
+      "nome": "Improviso",
+      "linhagem": "lavinho",
+      "tipo": "active",
+      "equipadaEm": 534,
+      "usosComSucesso": 738,
+      "usosPorPartidaEquipada": 1.38,
+      "ativacoesDeFlow": 0
+    },
+    "samba_livre": {
+      "nome": "Samba Livre",
+      "linhagem": "lavinho",
+      "tipo": "active",
+      "equipadaEm": 523,
+      "usosComSucesso": 325,
+      "usosPorPartidaEquipada": 0.62,
+      "ativacoesDeFlow": 0
+    },
+    "passe_curva": {
+      "nome": "Passe em Curva",
+      "linhagem": "lavinho",
+      "tipo": "active",
+      "equipadaEm": 524,
+      "usosComSucesso": 12,
+      "usosPorPartidaEquipada": 0.02,
+      "ativacoesDeFlow": 0
+    }
+  }
+}

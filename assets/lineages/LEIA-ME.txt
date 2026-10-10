@@ -1,0 +1,7 @@
+Coloque aqui os retratos finais das linhagens:
+
+    assets/lineages/{linhagemId}.png
+
+Ex.: assets/lineages/chigiri.png (quadrado, 512x512 ou maior).
+Se o arquivo não existir, o bot e o site usam o placeholder gerado.
+Prévia dos placeholders: assets/placeholders/lineages/.

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 560" width="400" height="560">
+    <defs><mask id="m"><rect width="400" height="560" fill="#fff"/><path d="M44,12 H388 V516 L356,548 H12 V44 Z" fill="#000"/></mask></defs>
+    <g mask="url(#m)"><path d="M38,0 H400 V522 L362,560 H0 V38 Z" fill="#2BB3FF" fill-opacity="0.12"/></g>
+    <path d="M38,2 H398 V522 L362,558 H2 V38 Z" fill="none" stroke="#2BB3FF" stroke-width="4"/>
+    <path d="M44,12 H388 V516 L356,548 H12 V44 Z" fill="none" stroke="#2BB3FF" stroke-opacity="0.6" stroke-width="2"/>
+    <rect x="38" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="48" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="58" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="68" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="78" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="88" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="98" y="4" width="6" height="3" fill="#2BB3FF"/><rect x="108" y="4" width="6" height="3" fill="#2BB3FF"/>
+    <rect x="340" y="553" width="40" height="3" fill="#2BB3FF"/>
+  </svg>
