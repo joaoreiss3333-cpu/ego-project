@@ -16,10 +16,23 @@ export function currentEnergy(c: Pick<Character, 'energy' | 'energyUpdatedAt'>, 
   return { energy, max: ENERGY.max, nextInMs, anchor: new Date(anchor) };
 }
 
+/**
+ * Contas com energia infinita (testes e gerência): IDs do Discord em
+ * INFINITE_ENERGY_IDS, separados por vírgula. Lido a cada chamada.
+ */
+export function hasInfiniteEnergy(discordId: string): boolean {
+  return (process.env.INFINITE_ENERGY_IDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .includes(discordId);
+}
+
 /** Gasta energia de treino. Lança erro com o tempo da próxima recarga. */
 export async function spendEnergy(characterId: string, amount: number = ENERGY.trainingCost) {
   return prisma.$transaction(async (tx) => {
     const c = await tx.character.findUniqueOrThrow({ where: { id: characterId } });
+    if (hasInfiniteEnergy(c.discordId)) return currentEnergy({ energy: ENERGY.max, energyUpdatedAt: new Date() });
     const e = currentEnergy(c);
     if (e.energy < amount) throw new GameError('no_energy', `Energia de treino esgotada. A próxima recarga é em ${formatDuration(e.nextInMs)}.`);
     const updated = await tx.character.updateMany({

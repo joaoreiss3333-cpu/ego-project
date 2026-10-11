@@ -12,6 +12,7 @@ import './features/profile';
 import './features/training';
 import './features/progress';
 import './features/misc';
+import './features/tutorial';
 import './match/handlers';
 import './match/lobby';
 import './match/queue';

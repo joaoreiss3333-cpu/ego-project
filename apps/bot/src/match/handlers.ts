@@ -1,3 +1,4 @@
+import { quickHelpScreen } from '../features/tutorial';
 import { on } from '../router';
 import { edit, screen } from '../ui';
 import { replyError } from '../util/reply';
@@ -12,6 +13,8 @@ function sessionOr(i: { user: { id: string } }, id: string) {
 
 // botões da mensagem pública
 on.component('mt', async (i, [action, id]) => {
+  // ajuda rápida: qualquer um no canal pode abrir
+  if (action === 'help') return i.reply(screen(quickHelpScreen(i.user.id), { ephemeral: true }));
   const r = sessionOr(i, id);
   if ('error' in r) return replyError(i, r.error!);
   const s = r.s;

@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import type { Message, SendableChannels } from 'discord.js';
-import { RARITY_COST, RARITY_LABEL, getLineage, getStage, type MatchMode, type SelectionStage } from '@ego/content';
+import { MATCH_RULES, RARITY_COST, RARITY_LABEL, getLineage, getStage, type MatchMode, type SelectionStage } from '@ego/content';
 import { assertStageUnlocked, findCharacter, guildSettings, type Character } from '@ego/db';
 import { cid, on } from '../router';
-import { ButtonStyle, btn, edit, row, screen, sep, text, type ScreenSpec } from '../ui';
+import { ButtonStyle, btn, edit, row, screen, section, sep, text, type Block, type ScreenSpec } from '../ui';
 import { replyError } from '../util/reply';
 import { sessionByUser, sessions } from './session';
 import { startMatch, type Seat } from './start';
@@ -43,45 +43,47 @@ function members(l: Lobby): string[] {
 function seatLine(l: Lobby, u: string): string {
   const c = l.chars.get(u)!;
   const lin = getLineage(c.lineageId!);
-  return `<@${u}> · **${c.name}** (${c.number}) · ${lin.name} ${RARITY_LABEL[lin.rarity]} · Nv ${c.level}${l.ready.has(u) ? ' · pronto' : ''}`;
+  return `${l.ready.has(u) ? '**[pronto]**' : '[esperando]'} <@${u}> · **${c.name}** #${c.number} · ${lin.name} (${RARITY_LABEL[lin.rarity]}) · Nv ${c.level}`;
 }
 
-function lobbySpec(l: Lobby): ScreenSpec {
+export function lobbySpec(l: Lobby): ScreenSpec {
   const n = size(l);
-  const kindLabel = l.kind === 'selecao' ? `Modo Seleção · ${l.stage?.name}` : l.kind === 'ranqueada' ? 'Ranqueada' : 'Casual';
+  const selecao = l.kind === 'selecao';
+  const kindLabel = selecao ? `Modo Seleção · ${l.stage?.name}` : l.kind === 'ranqueada' ? 'Ranqueada' : 'Casual';
+  const free = l.kind === 'ranqueada' ? '-# vaga livre' : '-# vaga livre (vira bot se ninguém entrar)';
   const team = (t: 'A' | 'B') => {
-    if (t === 'B' && l.kind === 'selecao') return l.stage!.opponents.map((o) => `${o.name} · ${getLineage(o.lineageId).name} · Nv ${o.level} (bot)`).join('\n');
+    if (t === 'B' && selecao) return l.stage!.opponents.map((o) => `${o.name} · ${getLineage(o.lineageId).name} · Nv ${o.level} (bot)`).join('\n');
     const lines = l.teams[t].map((u) => seatLine(l, u));
-    for (let k = lines.length; k < n; k++) lines.push(l.kind === 'ranqueada' ? '-# vaga livre' : '-# vaga livre (bot se ninguém entrar)');
+    for (let k = lines.length; k < n; k++) lines.push(free);
     return lines.join('\n');
   };
-  const gk = (t: 'A' | 'B') => (l.keepers[t] ? seatLine(l, l.keepers[t]!) : 'bot');
-  const budget = l.kind === 'ranqueada' ? `\nOrçamento de raridade: A **${rarityUsed(l, 'A')}/${l.budget}** · B **${rarityUsed(l, 'B')}/${l.budget}**` : '';
-  const fmt = l.kind === 'selecao' ? '' : `\nFormato: **${l.quick ? 'Rápida (primeiro a 3 gols)' : '2 tempos de 8 lances'}**`;
+  const gk = (t: 'A' | 'B') => (l.keepers[t] ? seatLine(l, l.keepers[t]!) : '-# bot (clique para ser o goleiro)');
+  const budget = (t: 'A' | 'B') => (l.kind === 'ranqueada' ? ` · raridade **${rarityUsed(l, t)}/${l.budget}**` : '');
   const all = members(l);
+  const readyCount = all.filter((u) => l.ready.has(u)).length;
   const canStart = all.length > 0 && all.every((u) => l.ready.has(u)) && (l.kind !== 'ranqueada' || (l.teams.A.length === n && l.teams.B.length === n));
-  const blocks = [
-    text(`### Lobby · ${l.mode} · ${kindLabel}\nHost: <@${l.hostId}>${fmt}${budget}`),
-    sep(),
-    text(`**Time A**\n${team('A')}\nGoleiro A: ${gk('A')}`),
-    text(`**Time B**\n${team('B')}\nGoleiro B: ${l.kind === 'selecao' ? 'bot' : gk('B')}`),
-    sep(),
-    row(
-      btn(cid('lb', 'join', l.id, 'A'), 'Entrar no time A', ButtonStyle.Primary, l.teams.A.length >= n),
-      ...(l.kind === 'selecao' ? [] : [btn(cid('lb', 'join', l.id, 'B'), 'Entrar no time B', ButtonStyle.Primary, l.teams.B.length >= n)]),
-      btn(cid('lb', 'gk', l.id, 'A'), 'Goleiro A', ButtonStyle.Secondary, !!l.keepers.A),
-      ...(l.kind === 'selecao' ? [] : [btn(cid('lb', 'gk', l.id, 'B'), 'Goleiro B', ButtonStyle.Secondary, !!l.keepers.B)]),
-    ),
-    row(
-      btn(cid('lb', 'ready', l.id), 'Pronto', ButtonStyle.Success),
-      btn(cid('lb', 'leave', l.id), 'Sair'),
-      ...(l.kind === 'selecao' ? [] : [btn(cid('lb', 'fmt', l.id), 'Trocar formato')]),
-      btn(cid('lb', 'start', l.id), 'Iniciar', ButtonStyle.Primary, !canStart),
-      btn(cid('lb', 'close', l.id), 'Fechar lobby', ButtonStyle.Danger),
-    ),
-    text(l.kind === 'ranqueada' ? '-# Ranqueada: todos os times completos com jogadores. Goleiros são bots se ninguém pegar a vaga.' : '-# Quem entrar precisa marcar Pronto. O host inicia.'),
+  const fmtLabel = l.quick ? `Rápida: primeiro a ${MATCH_RULES.quickFirstTo} gols` : `${MATCH_RULES.halves} tempos de ${MATCH_RULES.turnsPerHalf} lances`;
+  const blocks: Block[] = [text(`## Lobby ${l.mode} · ${kindLabel}\n-# Host: <@${l.hostId}>`)];
+  if (!selecao) blocks.push(section([`**Formato:** ${fmtLabel}\n-# Só o host troca.`], { button: btn(cid('lb', 'fmt', l.id), 'Trocar formato') }));
+  blocks.push(sep());
+  blocks.push(section([`### Time A · ${l.teams.A.length}/${n}${budget('A')}\n${team('A')}`], { button: btn(cid('lb', 'join', l.id, 'A'), 'Entrar no time A', ButtonStyle.Primary, l.teams.A.length >= n) }));
+  blocks.push(section([`**Goleiro A:** ${gk('A')}`], { button: btn(cid('lb', 'gk', l.id, 'A'), 'Ser goleiro A', ButtonStyle.Secondary, !!l.keepers.A) }));
+  blocks.push(sep());
+  if (selecao) blocks.push(text(`### Time B · instalação\n${team('B')}\n**Goleiro B:** bot`));
+  else {
+    blocks.push(section([`### Time B · ${l.teams.B.length}/${n}${budget('B')}\n${team('B')}`], { button: btn(cid('lb', 'join', l.id, 'B'), 'Entrar no time B', ButtonStyle.Primary, l.teams.B.length >= n) }));
+    blocks.push(section([`**Goleiro B:** ${gk('B')}`], { button: btn(cid('lb', 'gk', l.id, 'B'), 'Ser goleiro B', ButtonStyle.Secondary, !!l.keepers.B) }));
+  }
+  blocks.push(sep());
+  const steps = [
+    `**1.** Entre em um time ou no gol.${l.kind === 'ranqueada' ? ' Na ranqueada, os dois times precisam estar completos (goleiros podem ser bots).' : ' Vagas vazias viram bots.'}`,
+    `**2.** Todo mundo clica em **Estou pronto** (${readyCount}/${all.length}).`,
+    `**3.** O host clica em **Iniciar partida**.${canStart ? ' Tudo certo!' : ''}`,
   ];
-  return { accent: 'padrao', blocks };
+  blocks.push(text(`**Como começar**\n${steps.join('\n')}\n-# Nunca jogou? Use **/tutorial** antes (leva 3 minutos).`));
+  blocks.push(row(btn(cid('lb', 'ready', l.id), 'Estou pronto', ButtonStyle.Success), btn(cid('lb', 'leave', l.id), 'Sair do lobby')));
+  blocks.push(row(btn(cid('lb', 'start', l.id), 'Iniciar partida', ButtonStyle.Primary, !canStart), btn(cid('lb', 'close', l.id), 'Fechar lobby', ButtonStyle.Danger)));
+  return { accent: canStart ? 'sucesso' : 'padrao', blocks };
 }
 
 async function refresh(l: Lobby) {

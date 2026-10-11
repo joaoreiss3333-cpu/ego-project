@@ -56,6 +56,7 @@ cp .env.example .env
 | `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET` | Login do Discord no site (mesma aplicação) |
 | `AUTH_URL` | URL do site para o Auth.js |
 | `UPLOAD_DIR` | Opcional: pasta dos retratos enviados (padrão `data/uploads`) |
+| `INFINITE_ENERGY_IDS` | Opcional: IDs do Discord (separados por vírgula) com energia de treino infinita, para testes e gerência |
 
 Todos os scripts leem o `.env` da raiz.
 
@@ -99,7 +100,7 @@ Abas do site: Perfil, Personagem (Atributos, Linhagem, Loadout), Inventário (Eq
 
 ## Comandos do bot
 
-`/criar-personagem`, `/perfil [usuario]`, `/atributos`, `/loadout`, `/guia [tema]`, `/partida criar modo tipo`, `/partida sair`, `/fila ranqueada modo`, `/fila sair`, `/treino drible|desarme|fisico|1v1`, `/selecao`, `/missoes`, `/girar`, `/inventario`, `/equipar`, `/ranking [modo]`, `/site`.
+`/tutorial`, `/criar-personagem`, `/perfil [usuario]`, `/atributos`, `/loadout`, `/guia [tema]`, `/partida criar modo tipo`, `/partida sair`, `/fila ranqueada modo`, `/fila sair`, `/treino drible|desarme|fisico|1v1`, `/selecao`, `/missoes`, `/girar`, `/inventario`, `/equipar`, `/ranking [modo]`, `/site`.
 
 Gerência (permissão **Gerenciar Servidor**): `/admin dar-coins`, `/admin dar-ienes`, `/admin debug-ia`, `/admin resetar-personagem`, `/admin encerrar-partida`, `/admin config` (tempo do lance, GIF, orçamento de raridade por modo).
 

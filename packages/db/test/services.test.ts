@@ -155,6 +155,14 @@ d('serviços com banco', () => {
     const c = await newChar(7);
     for (let i = 0; i < 6; i++) await spendEnergy(c.id);
     await expect(spendEnergy(c.id)).rejects.toThrow(/esgotada/);
+    // quem está em INFINITE_ENERGY_IDS não gasta
+    const before = process.env.INFINITE_ENERGY_IDS;
+    process.env.INFINITE_ENERGY_IDS = `outro, ${c.discordId}`;
+    try {
+      for (let i = 0; i < 10; i++) expect((await spendEnergy(c.id)).energy).toBe(6);
+    } finally {
+      process.env.INFINITE_ENERGY_IDS = before;
+    }
   });
 
   it('equipamento: +1 acima do teto no máximo; melhoria custa Ienes', async () => {

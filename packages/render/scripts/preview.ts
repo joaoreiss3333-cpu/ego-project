@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { autoTurn, botSlot, buildSetup, createMatch, keeperSlot, planBots, normalizePlans, publicRevelation, reachableCells, type MatchState } from '@ego/engine';
-import { arrowsFromRevelation, arrowsFromResult, overlaysFromResult, renderField, renderPlanning, renderStepsGif } from '../src';
+import { arrowsFromRevelation, arrowsFromResult, overlaysFromResult, renderField, renderPlanView, renderPlanning, renderStepsGif } from '../src';
 const out = process.argv[2] ?? 'preview';
 mkdirSync(out, { recursive: true });
 const lin = ['isagi', 'chigiri', 'lavinho', 'gagamaru', 'kuon', 'kuon'];
@@ -21,10 +21,29 @@ writeFileSync(join(out, 'field.png'), renderField(s, { showZones: true }));
 writeFileSync(join(out, 'reveal.png'), renderField(s, { arrows: arrowsFromRevelation(s, publicRevelation(s, plans)), hudRight: 'REVELAÇÃO' }));
 const holder = s.ball.holder ?? 'A1';
 writeFileSync(join(out, 'planning.png'), renderPlanning(s, holder, reachableCells(s, holder)));
+const reach = reachableCells(s, holder);
+writeFileSync(join(out, 'plan-dest.png'), renderPlanView(s, holder, { reach, dest: reach[reach.length - 3] }));
+writeFileSync(join(out, 'plan-shot.png'), renderPlanView(s, holder, { dest: reach[reach.length - 3], shot: true }));
 const r = autoTurn(s, { botIds: slots.map((x) => x.id) }).result;
 writeFileSync(join(out, 'result.png'), renderField(r.state, { arrows: arrowsFromResult(s, r), overlays: overlaysFromResult(s, r), hudRight: 'RESOLUÇÃO' }));
-writeFileSync(join(out, 'steps.gif'), renderStepsGif(s, r));
+let t0 = Date.now();
+const stepsGif = renderStepsGif(s, r);
+console.log(`steps.gif: ${Date.now() - t0} ms, ${Math.round(stepsGif.length / 1024)} KB`);
+writeFileSync(join(out, 'steps.gif'), stepsGif);
 console.log(r.log);
+// um lance com gol, para conferir a faixa e a saída de bola
+let g = s;
+for (let i = 0; i < 60 && !g.finished; i++) {
+  const t = autoTurn(g, { botIds: slots.map((x) => x.id) }).result;
+  if (t.goal) {
+    t0 = Date.now();
+    const gif = renderStepsGif(g, t);
+    console.log(`goal.gif: ${Date.now() - t0} ms, ${Math.round(gif.length / 1024)} KB`);
+    writeFileSync(join(out, 'goal.gif'), gif);
+    break;
+  }
+  g = t.state;
+}
 import { renderProfileCard, renderResultCard, renderDuelTraining, renderPhysical, renderStage, renderGachaGif, renderGachaResult } from '../src';
 import { newDuelTraining, playDuelTraining, newPhysicalTraining, playPhysical } from '@ego/engine';
 import { SELECTION_GROUPS } from '@ego/content';

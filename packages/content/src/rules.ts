@@ -26,7 +26,7 @@ export const MATCH_RULES = {
   halves: 2,
   turnsPerHalf: 8,
   quickFirstTo: 3,
-  planSeconds: { default: 30, min: 20, max: 60 },
+  planSeconds: { default: 60, min: 20, max: 60 },
   reactionSeconds: 15,
 
   movement: { base: 2, velocityDivisor: 4, sprintBonus: 2 },

@@ -10,10 +10,12 @@ import {
   renderField,
   renderGachaGif,
   renderPhysical,
+  renderPlanView,
   renderPlanning,
   renderProfileCard,
   renderStage,
   renderStepsGif,
+  turnBanner,
   skillIcon,
   skillIconFile,
 } from '../src';
@@ -37,8 +39,22 @@ describe('renderização', () => {
     const { slots, state } = match();
     expect(isPng(renderField(state, { showZones: true }))).toBe(true);
     expect(isPng(renderPlanning(state, 'A1', reachableCells(state, 'A1')))).toBe(true);
+    expect(isPng(renderPlanView(state, 'A1', { reach: reachableCells(state, 'A1'), dest: { x: state.players.A1.pos.x + 1, y: state.players.A1.pos.y }, shot: true }))).toBe(true);
+    expect(isPng(renderField(state, { legend: 'match', banner: { text: 'GOL!', tone: 'goal' } }))).toBe(true);
     const r = autoTurn(state, { botIds: slots.map((s) => s.id) }).result;
     expect(isGif(renderStepsGif(state, r))).toBe(true);
+  });
+
+  it('GIF de lances até um gol termina no campo de agora', () => {
+    const { slots, state } = match();
+    let s = state;
+    for (let i = 0; i < 40 && !s.finished; i++) {
+      const r = autoTurn(s, { botIds: slots.map((x) => x.id) }).result;
+      const gif = renderStepsGif(s, r);
+      expect(isGif(gif)).toBe(true);
+      if (r.goal) expect(turnBanner(s, r)?.tone).toBe('goal');
+      s = r.state;
+    }
   });
 
   it('cards e telas', async () => {

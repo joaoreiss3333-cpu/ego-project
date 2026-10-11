@@ -5,6 +5,7 @@ const modeChoices = MATCH_MODES.map((m) => ({ name: m, value: m }));
 
 export const COMMANDS = [
   new SlashCommandBuilder().setName('criar-personagem').setDescription('Crie seu personagem e entre na instalação.'),
+  new SlashCommandBuilder().setName('tutorial').setDescription('Aprenda a jogar: explicações rápidas e treinos práticos (grátis).'),
   new SlashCommandBuilder()
     .setName('perfil')
     .setDescription('Sua ficha de avaliação (ou a de outro jogador).')
