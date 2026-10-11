@@ -13,6 +13,8 @@ export const devLoginEnabled = process.env.NODE_ENV !== 'production' && process.
 
 const providers: Provider[] = [
   Discord({
+    // O Discord devolve iss=https://discord.com no callback; sem isto o Auth.js espera "https://authjs.dev" e rejeita o login.
+    issuer: 'https://discord.com',
     authorization: { url: 'https://discord.com/api/oauth2/authorize', params: { scope: 'identify' } },
   }),
 ];
