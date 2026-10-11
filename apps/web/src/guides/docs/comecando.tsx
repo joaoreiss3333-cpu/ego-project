@@ -26,7 +26,7 @@ export const primeirosPassos: GuideDoc = {
         {
           ordered: true,
           list: [
-            'No servidor, use **/criar-personagem**: nome, número, posição, pé e cor do token ([[criacao-de-personagem]]).',
+            'No servidor, use **/criar-personagem**: nome, número, posição, pé e cor do token ([[criacao-de-personagem]]). Se nunca jogou, faça o **/tutorial** antes: leva poucos minutos.',
             `Use **/girar**. O primeiro giro é grátis e já equipa a linhagem que sair ([[giro-de-linhagem]]). Sem linhagem, o teto de tudo é ${NO_LINEAGE_CAP}.`,
             `Faça treinos rápidos com **/treino**. Cada um gasta ${ENERGY.trainingCost} de energia e dá fichas e XP ([[treinos]]).`,
             'Entre no **Modo Seleção** com **/selecao**. São partidas contra bots, em etapas ([[modo-selecao]]).',
@@ -156,6 +156,7 @@ export const criacao: GuideDoc = {
 };
 
 const COMMANDS: [string, string][] = [
+  ['/tutorial', 'Explicações rápidas e treinos práticos com o painel de verdade. Não gasta energia.'],
   ['/criar-personagem', 'Cria seu personagem.'],
   ['/perfil [usuario]', 'Sua ficha, ou a de outro jogador.'],
   ['/atributos', 'Distribui Pontos de Atributo.'],

@@ -7,6 +7,7 @@ export * from './plan';
 export * from './resolve';
 export * from './reactions';
 export * from './narrate';
+export * from './explain';
 export * from './revelation';
 export * from './runner';
 export * from './bots';

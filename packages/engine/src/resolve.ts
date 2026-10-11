@@ -1,4 +1,4 @@
-import { MATCH_RULES, findSkill, type AttrKey, type GoalZone, type ResolvedSkill } from '@ego/content';
+import { ACTION_LABEL, ATTR_LABEL, MATCH_RULES, findSkill, type AttrKey, type GoalZone, type ResolvedSkill } from '@ego/content';
 import {
   attackingGoalX,
   cheb,
@@ -25,7 +25,6 @@ import {
   guessOf,
   hasStatus,
   isPassAction,
-  rollPenalty,
   skillFor,
   zoneRadius,
 } from './mechanics';
@@ -40,6 +39,7 @@ import {
   type Plan,
   type PlanMap,
   type RevealedPlan,
+  type RollPart,
   type StepFrame,
   type Team,
   type TurnResult,
@@ -127,6 +127,27 @@ function snapshot(ctx: Ctx): StepFrame {
 function attr(ctx: Ctx, id: string, k: AttrKey): number {
   return effectiveAttrs(ctx.s, id, ctx.t)[k];
 }
+
+/** Rolagem com parcelas nomeadas (a soma é o total), para explicar o lance depois. */
+class Roll {
+  parts: RollPart[] = [];
+  add(label: string, value: number): this {
+    if (value) this.parts.push({ label, value });
+    return this;
+  }
+  get total(): number {
+    return this.parts.reduce((a, p) => a + p.value, 0);
+  }
+}
+
+/** Mesmas penalidades de `rollPenalty`, separadas por motivo. */
+function addPenalties(ctx: Ctx, id: string, r: Roll) {
+  const p = ctx.s.players[id];
+  if (p.stamina < MATCH_RULES.stamina.lowThreshold) r.add('fôlego baixo', -MATCH_RULES.stamina.lowPenalty);
+  if (hasStatus(p, 'desmarcado', ctx.t)) r.add('perdeu o marcado', -MATCH_RULES.offBall.desmarqueMarkerPenalty);
+}
+
+const skillName = (id: string) => findSkill(id)?.name ?? id;
 
 function gainFlow(ctx: Ctx, id: string, amount: number) {
   const p = ctx.s.players[id];
@@ -583,20 +604,28 @@ function duel(ctx: Ctx, c: string, did: string, step: number): 'atk' | 'def' {
     atkM = MATCH_RULES.duel.matrixBonus;
     defM = 0;
   }
-  let atk = attr(ctx, c, duelStat(cAct)) + ctx.rng.d10() + atkM - rollPenalty(s, c, ctx.t);
-  if (cAct === 'proteger') atk += MATCH_RULES.duel.protectBonus;
+  // ordem das rolagens preservada: dado do ataque, depois o da defesa
+  const stat = duelStat(cAct);
+  const A = new Roll().add(ATTR_LABEL[stat], attr(ctx, c, stat)).add('dado', ctx.rng.d10());
+  A.add(cfx.panther ? skillName('pantera_vermelha') : `${ACTION_LABEL[cAct]} vence ${ACTION_LABEL[dAct]}`, atkM);
+  addPenalties(ctx, c, A);
+  if (cAct === 'proteger') A.add('Proteger', MATCH_RULES.duel.protectBonus);
   let sambaUsed = false;
   if (cfx.samba && cfx.samba.left > 0 && cAct === 'driblar') {
-    atk += cfx.samba.bonus;
+    A.add(skillName('samba_livre'), cfx.samba.bonus);
     sambaUsed = true;
   }
-  let def = attr(ctx, did, 'defesa') + ctx.rng.d10() + defM - rollPenalty(s, did, ctx.t);
-  def += ctx.readBonus[did] ?? 0;
-  def += dfx.commandBonus;
-  if (dAct === 'bote') def += dfx.tackleBonus;
+  const D = new Roll().add(ATTR_LABEL.defesa, attr(ctx, did, 'defesa')).add('dado', ctx.rng.d10());
+  D.add(`${ACTION_LABEL[dAct]} vence ${ACTION_LABEL[cAct]}`, defM);
+  addPenalties(ctx, did, D);
+  D.add('Leitura certa', ctx.readBonus[did] ?? 0);
+  D.add('Comandar do goleiro', dfx.commandBonus);
+  if (dAct === 'bote') D.add(skillName('carrinho'), dfx.tackleBonus);
+  const atk = A.total;
+  const def = D.total;
   const winner = atk > def ? 'atk' : 'def';
   const kind = duelKind(cAct);
-  ctx.events.push({ t: 'duel', step, attacker: c, defender: did, kind, atk, def, winner, skill: dAct === 'bote' && dfx.tackleBonus ? 'carrinho' : null });
+  ctx.events.push({ t: 'duel', step, attacker: c, defender: did, kind, atk, def, winner, skill: dAct === 'bote' && dfx.tackleBonus ? 'carrinho' : null, atkAction: cAct, defAction: dAct, atkParts: A.parts, defParts: D.parts });
   ctx.dueled.add(`${c}|${did}`);
   cp.lastDuel = { opponent: did, turn: ctx.t };
   d.lastDuel = { opponent: c, turn: ctx.t };
@@ -625,10 +654,15 @@ function duel(ctx: Ctx, c: string, did: string, step: number): 'atk' | 'def' {
       const cov = ctx.fx[kid].cover;
       if (!cov || cov.ally !== did || k.team !== d.team || ctx.dueled.has(`${c}|${kid}`)) continue;
       if (cheb(k.pos, cp.pos) > cov.range) continue;
-      const a2 = attr(ctx, c, duelStat(cAct)) + ctx.rng.d10() - rollPenalty(s, c, ctx.t);
-      const d2 = attr(ctx, kid, 'defesa') + ctx.rng.d10() + cov.bonus - rollPenalty(s, kid, ctx.t) + (ctx.readBonus[kid] ?? 0);
+      const A2 = new Roll().add(ATTR_LABEL[stat], attr(ctx, c, stat)).add('dado', ctx.rng.d10());
+      addPenalties(ctx, c, A2);
+      const D2 = new Roll().add(ATTR_LABEL.defesa, attr(ctx, kid, 'defesa')).add('dado', ctx.rng.d10()).add(skillName('cobertura'), cov.bonus);
+      addPenalties(ctx, kid, D2);
+      D2.add('Leitura certa', ctx.readBonus[kid] ?? 0);
+      const a2 = A2.total;
+      const d2 = D2.total;
       const w2 = a2 > d2 ? 'atk' : 'def';
-      ctx.events.push({ t: 'duel', step, attacker: c, defender: kid, kind: 'cobertura', atk: a2, def: d2, winner: w2, skill: 'cobertura' });
+      ctx.events.push({ t: 'duel', step, attacker: c, defender: kid, kind: 'cobertura', atk: a2, def: d2, winner: w2, skill: 'cobertura', atkAction: cAct, defAction: ctx.plans[kid].action, atkParts: A2.parts, defParts: D2.parts });
       ctx.dueled.add(`${c}|${kid}`);
       if (w2 === 'def') {
         k.stats.duelsWon++;
@@ -682,10 +716,16 @@ function doPass(ctx: Ctx, o: PassOpts): string | null {
   const dist = cheb(passer.pos, o.dest);
   const over = dist - Math.floor(passAttr / 2);
   const pen = over > 0 ? Math.ceil(over / MATCH_RULES.pass.penaltyEvery) : 0;
-  let roll = passAttr + ctx.rng.d10() - pen - rollPenalty(s, o.from, ctx.t) + o.receptionBonus;
+  const P = new Roll().add(ATTR_LABEL.passe, passAttr).add('dado', ctx.rng.d10()).add(`distância (${dist} casas)`, -pen);
+  addPenalties(ctx, o.from, P);
+  // bônus de recepção: casa do passe no espaço e, o que sobrar, Desmarque de quem recebe
+  const space = Math.min(o.receptionBonus, o.kind === 'espaco' && o.receiver ? MATCH_RULES.offBall.spaceReceptionBonus : 0);
+  P.add('recebe no espaço', space).add('Desmarque do companheiro', o.receptionBonus - space);
   const recvPlan = o.receiver ? ctx.plans[o.receiver] : null;
   const asked = !!recvPlan && recvPlan.action === 'pedir_bola';
-  if (asked) roll += MATCH_RULES.offBall.pedirBolaPassBonus;
+  if (asked) P.add('pediu a bola', MATCH_RULES.offBall.pedirBolaPassBonus);
+  const roll = P.total;
+  const parts = P.parts;
 
   // passe torto
   if (roll < MATCH_RULES.pass.astrayThreshold) {
@@ -698,12 +738,12 @@ function doPass(ctx: Ctx, o: PassOpts): string | null {
     if (!inBounds(landed, f)) {
       const border = nearestBorder(landed, f);
       const to = giveToOpponentAtBorder(ctx, passer.team, border);
-      ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'out', landed: border });
+      ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'out', landed: border, parts });
       ctx.events.push({ t: 'out', team: otherTeam(passer.team), cell: border, to });
       return to;
     }
     const on = s.order.find((id) => eq(s.players[id].pos, landed));
-    ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'astray', landed, by: on ?? null });
+    ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'astray', landed, by: on ?? null, parts });
     if (on) {
       setHolder(ctx, on);
       if (s.players[on].team === passer.team) return on;
@@ -743,19 +783,21 @@ function doPass(ctx: Ctx, o: PassOpts): string | null {
         continue;
       }
       const eplan = ctx.plans[e.id];
-      let r = attr(ctx, e.id, 'defesa') + ctx.rng.d10() - rollPenalty(s, e.id, ctx.t);
-      r += ctx.readBonus[e.id] ?? 0;
-      r += ctx.fx[e.id].commandBonus;
+      const I = new Roll().add(ATTR_LABEL.defesa, attr(ctx, e.id, 'defesa')).add('dado', ctx.rng.d10());
+      addPenalties(ctx, e.id, I);
+      I.add('Leitura certa', ctx.readBonus[e.id] ?? 0);
+      I.add('Comandar do goleiro', ctx.fx[e.id].commandBonus);
       if (eplan?.action === 'fechar_linha') {
-        r += MATCH_RULES.offBall.fecharLinhaInterceptBonus;
-        if (cheb(e.pos, passer.pos) <= 1) r += MATCH_RULES.duel.matrixBonus;
+        I.add('Fechar linha', MATCH_RULES.offBall.fecharLinhaInterceptBonus);
+        if (cheb(e.pos, passer.pos) <= 1) I.add('colado em quem passou', MATCH_RULES.duel.matrixBonus);
       }
-      if (e.isKeeper) r += MATCH_RULES.goalkeeper.advanceInterceptBonus;
-      if (openers.length) r -= MATCH_RULES.offBall.abrirLinhaInterceptPenalty;
+      if (e.isKeeper) I.add('Adiantar linha', MATCH_RULES.goalkeeper.advanceInterceptBonus);
+      if (openers.length) I.add('Abrir linha do atacante', -MATCH_RULES.offBall.abrirLinhaInterceptPenalty);
+      const r = I.total;
       if (r >= roll) {
         setHolder(ctx, e.id);
         e.stats.interceptions++;
-        ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'intercepted', by: e.id });
+        ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'intercepted', by: e.id, parts, interceptRoll: r, interceptParts: I.parts });
         return e.id;
       }
     }
@@ -764,14 +806,14 @@ function doPass(ctx: Ctx, o: PassOpts): string | null {
   // chegada
   if (!o.receiver) {
     setHolder(ctx, null, o.dest);
-    ctx.events.push({ t: 'pass', from: o.from, to: null, cell: o.dest, kind: o.kind, roll, result: 'loose' });
+    ctx.events.push({ t: 'pass', from: o.from, to: null, cell: o.dest, kind: o.kind, roll, result: 'loose', parts });
     ctx.events.push({ t: 'loose', cell: o.dest });
     return null;
   }
   const rcv = s.players[o.receiver];
   setHolder(ctx, o.receiver);
   passer.stats.passesCompleted++;
-  ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'ok' });
+  ctx.events.push({ t: 'pass', from: o.from, to: o.receiver, cell: o.dest, kind: o.kind, roll, result: 'ok', parts });
   s.lastPass = { passer: o.from, receiver: o.receiver, turn: ctx.t };
   if (asked) {
     passer.chem += MATCH_RULES.offBall.pedirBolaChemistry;
@@ -935,11 +977,17 @@ function shoot(ctx: Ctx, sid: string, zone: GoalZone, o: ShotOpts) {
   const center = goalCenter(gx, f);
   const dist = distToCells(sp.pos, gCells);
   const R = MATCH_RULES.shot;
-  const distPen = (dist > R.freeDistance ? Math.ceil((dist - R.freeDistance) / R.penaltyEvery) : 0) + rowsOutsideGoal(sp.pos, f) * R.anglePenaltyPerRow;
+  const distOnly = dist > R.freeDistance ? Math.ceil((dist - R.freeDistance) / R.penaltyEvery) : 0;
+  const anglePen = rowsOutsideGoal(sp.pos, f) * R.anglePenaltyPerRow;
   const lineCells = line(sp.pos, center).slice(1);
   const enemies = enemiesOf(ctx, sp.team);
   const onLine = enemies.filter((e) => lineCells.some((c) => eq(c, e.pos))).length;
-  let roll = attr(ctx, sid, 'chute') + ctx.rng.d10() - distPen - onLine * R.defenderOnLinePenalty + o.bonus - rollPenalty(s, sid, ctx.t);
+  const S = new Roll().add(ATTR_LABEL.chute, attr(ctx, sid, 'chute')).add('dado', ctx.rng.d10());
+  S.add(`distância (${dist} casas)`, -distOnly).add('ângulo fechado', -anglePen).add(onLine > 1 ? `${onLine} marcadores na frente` : 'marcador na frente', -onLine * R.defenderOnLinePenalty);
+  S.add('habilidade', o.bonus);
+  addPenalties(ctx, sid, S);
+  const roll = S.total;
+  const parts = S.parts;
   sp.stats.shots++;
 
   // passe que vira finalização
@@ -950,9 +998,11 @@ function shoot(ctx: Ctx, sid: string, zone: GoalZone, o: ShotOpts) {
     .filter((e) => ctx.fx[e.id].shotBlock && distToCells(e.pos, lineCells) <= ctx.fx[e.id].shotBlock!.range)
     .sort((a, b) => distToCells(a.pos, lineCells) - distToCells(b.pos, lineCells));
   for (const b of blockers) {
-    const br = attr(ctx, b.id, 'fisico') + ctx.rng.d10() - rollPenalty(s, b.id, ctx.t);
+    const B = new Roll().add(ATTR_LABEL.fisico, attr(ctx, b.id, 'fisico')).add('dado', ctx.rng.d10());
+    addPenalties(ctx, b.id, B);
+    const br = B.total;
     if (br >= roll) {
-      ctx.events.push({ t: 'shot', shooter: sid, zone, keeper: null, keeperZone: null, roll, keeperRoll: br, goal: false, blockedBy: b.id, oneTouch: o.oneTouch, distance: dist });
+      ctx.events.push({ t: 'shot', shooter: sid, zone, keeper: null, keeperZone: null, roll, keeperRoll: br, goal: false, blockedBy: b.id, oneTouch: o.oneTouch, distance: dist, parts, keeperParts: B.parts });
       ctx.events.push({ t: 'block', blocker: b.id, shooter: sid });
       markSuccess(ctx, b.id, 'corpo_elastico');
       setHolder(ctx, b.id);
@@ -964,19 +1014,23 @@ function shoot(ctx: Ctx, sid: string, zone: GoalZone, o: ShotOpts) {
   const k = keeperOf(ctx, otherTeam(sp.team));
   let kRoll = -99;
   let kZone: GoalZone | null = null;
+  let keeperParts: RollPart[] | undefined;
   if (k) {
     const kplan = ctx.plans[k.id];
     kZone = (kplan?.keeperZone ?? 1) as GoalZone;
     const ka = effectiveAttrs(s, k.id, ctx.t);
-    kRoll = Math.floor((ka.fisico + ka.visao) / 2) + ctx.rng.d10() - rollPenalty(s, k.id, ctx.t);
+    const K = new Roll().add(`média de ${ATTR_LABEL.fisico} e ${ATTR_LABEL.visao}`, Math.floor((ka.fisico + ka.visao) / 2)).add('dado', ctx.rng.d10());
+    addPenalties(ctx, k.id, K);
     if (!o.noKeeperZone) {
-      if (kZone === zone) kRoll += R.keeperExactZone;
-      else if (zonesAdjacent(kZone, zone)) kRoll += R.keeperAdjacentZone;
+      if (kZone === zone) K.add('acertou o canto', R.keeperExactZone);
+      else if (zonesAdjacent(kZone, zone)) K.add('canto vizinho', R.keeperAdjacentZone);
     }
-    if (kplan?.action === 'gk_adiantar') kRoll -= MATCH_RULES.goalkeeper.advanceSavePenalty;
+    if (kplan?.action === 'gk_adiantar') K.add('Adiantar linha', -MATCH_RULES.goalkeeper.advanceSavePenalty);
+    kRoll = K.total;
+    keeperParts = K.parts;
   }
   const goal = roll > kRoll;
-  ctx.events.push({ t: 'shot', shooter: sid, zone, keeper: k?.id ?? null, keeperZone: o.noKeeperZone ? null : kZone, roll, keeperRoll: kRoll, goal, oneTouch: o.oneTouch, distance: dist });
+  ctx.events.push({ t: 'shot', shooter: sid, zone, keeper: k?.id ?? null, keeperZone: o.noKeeperZone ? null : kZone, roll, keeperRoll: kRoll, goal, oneTouch: o.oneTouch, distance: dist, parts, keeperParts });
   if (goal) {
     s.score[sp.team]++;
     sp.stats.goals++;

@@ -43,7 +43,7 @@ import {
   renderGachaGif,
   renderGachaResult,
   renderPhysical,
-  renderPlanning,
+  renderPlanView,
   renderProfileCard,
   renderResultCard,
   renderStage,
@@ -108,7 +108,7 @@ const plans = normalizePlans(s, planBots(s, botIds).plans);
 writeFileSync(join(samples, 'campo.png'), renderField(s, { showZones: true }));
 writeFileSync(join(samples, 'revelacao.png'), renderField(s, { arrows: arrowsFromRevelation(s, publicRevelation(s, plans)), hudRight: 'REVELAÇÃO' }));
 const holder = s.ball.holder ?? 'A1';
-writeFileSync(join(samples, 'planejamento.png'), renderPlanning(s, holder, reachableCells(s, holder)));
+writeFileSync(join(samples, 'planejamento.png'), renderPlanView(s, holder, { reach: reachableCells(s, holder) }));
 const r = autoTurn(s, { botIds }).result;
 writeFileSync(join(samples, 'resolucao.png'), renderField(r.state, { arrows: arrowsFromResult(s, r), overlays: overlaysFromResult(s, r), hudRight: 'RESOLUÇÃO' }));
 writeFileSync(join(samples, 'passos.gif'), renderStepsGif(s, r));

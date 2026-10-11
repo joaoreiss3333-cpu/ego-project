@@ -16,10 +16,11 @@ import {
   type TurnResult,
 } from '@ego/engine';
 import { abortMatch, createMatchRecord, saveSnapshot } from '@ego/db';
-import { arrowsFromResult, arrowsFromRevelation, overlaysFromResult, renderField, renderStepsGif } from '@ego/render';
+import { arrowsFromResult, arrowsFromRevelation, overlaysFromResult, renderField, renderStepsGif, turnBanner } from '@ego/render';
 import { cid } from '../router';
 import { ButtonStyle, btn, edit, file, images, row, screen, sep, text, type Block, type ScreenSpec } from '../ui';
-import { applyClick, draftToPlan, nameOf, panelScreen, planToDraft, type Draft } from './panel';
+import { explainBlocks } from './explain';
+import { applyClick, draftToPlan, nameOf, newDraft, panelScreen, planToDraft, type Draft } from './panel';
 
 export interface Participant {
   userId: string;
@@ -72,7 +73,10 @@ export class MatchSession {
   reactions: ReactionRequest[] = [];
   reactionDone = new Set<string>();
   lastLog: string[] = [];
-  lastFiles: { png: Buffer; gif: Buffer | null } | null = null;
+  /** Imagem da mensagem pública: GIF do último lance ou PNG do campo. */
+  lastImage: { name: 'lance.gif' | 'campo.png'; data: Buffer } | null = null;
+  /** "Lance 3 de 8 · 1º tempo" do lance da mensagem atual. */
+  lanceLabel = '';
   debugAi = false;
   debugMessage: Message | null = null;
   lastDebug: TeamDebug[] = [];
@@ -139,12 +143,8 @@ export class MatchSession {
     this.state = initial;
     this.register();
     if (isNew) await createMatchRecord({ guildId: this.guildId, channelId: this.channel.id, mode: this.setup.mode, kind: this.setup.kind, setup: this.setup, stageId: this.stageId });
-    const png = renderField(this.state, { showZones: true, hudRight: this.label.toUpperCase() });
-    this.lastFiles = { png, gif: null };
-    this.lastLog = [isNew ? 'Apito inicial. A avaliação começou.' : 'Partida retomada depois de um reinício.'];
-    this.message = await this.channel.send(screen(this.publicSpec(true)));
-    await saveSnapshot(this.id, this.state, this.turns, this.message.id);
-    this.beginPlanning(false);
+    await this.openLance(isNew ? 'Apito inicial. A avaliação começou.' : 'Partida retomada depois de um reinício.');
+    await saveSnapshot(this.id, this.state, this.turns, this.message?.id ?? null);
   }
 
   // ---------------------------------------------------------------------------
@@ -153,40 +153,65 @@ export class MatchSession {
 
   private statusLine(): string {
     const humans = this.humanSlots();
+    const names = (xs: string[]) => xs.map((s) => nameOf(this.state, s)).join(', ');
+    const closes = `<t:${Math.floor(this.deadline / 1000)}:R>`;
     if (this.phase === 'planning') {
       const ready = humans.filter((s) => this.humanPlans[s]);
       const waiting = humans.filter((s) => !this.humanPlans[s]);
-      const names = (xs: string[]) => xs.map((s) => nameOf(this.state, s)).join(', ') || '—';
-      return `Prontos **${ready.length}/${humans.length}**: ${names(ready)}\nAguardando: ${names(waiting)}\nPlanejamento fecha <t:${Math.floor(this.deadline / 1000)}:R>`;
+      const lines = [`### Sua vez de planejar · fecha ${closes}`];
+      lines.push(waiting.length ? `Prontos **${ready.length}/${humans.length}** · faltam: ${names(waiting)}` : `Todos prontos. Resolvendo...`);
+      lines.push('-# Clique em **Planejar meu lance**: o painel é só seu. Quem não confirmar a tempo joga no automático.');
+      if (this.state.turn <= 2) lines.push('-# Primeira vez? Clique em **Como jogar** ou use **/tutorial**.');
+      return lines.join('\n');
     }
     if (this.phase === 'reaction') {
       const pend = this.reactions.filter((r) => this.isHumanSlot(r.playerId) && !this.reactionDone.has(r.playerId));
-      return `**Janela de reação** · ${pend.map((r) => nameOf(this.state, r.playerId)).join(', ') || '—'} · fecha <t:${Math.floor(this.deadline / 1000)}:R>`;
+      return `### Janela de reação · fecha ${closes}\n${pend.length ? `${names(pend.map((r) => r.playerId))} pode ajustar o plano com uma habilidade de reação.` : 'Reações registradas.'}\n-# As setas mostram para onde cada um vai. A ação de cada um continua secreta.`;
     }
-    if (this.phase === 'resolving') return 'Resolvendo o lance...';
-    return 'Partida encerrada.';
+    if (this.phase === 'resolving') return '### Resolvendo o lance...';
+    return '### Partida encerrada';
   }
 
   private isHumanSlot(slotId: string): boolean {
     return this.participants.some((p) => p.slotId === slotId && !this.left.has(p.userId));
   }
 
+  /** Nome do anexo mostrado: o GIF do último lance, se houver, senão a imagem do campo. Uma imagem só, em largura total. */
+  private imageName(): string {
+    return this.lastImage?.name ?? 'campo.png';
+  }
+
+  /** Mensagem do lance em andamento (planejamento, revelação, reação). */
   publicSpec(withFiles: boolean): ScreenSpec {
     const s = this.state;
-    const total = s.setup.turnsPerHalf;
-    const title = `## A ${s.score.A} : ${s.score.B} B\n${this.label} · ${s.finished ? 'Fim de partida' : `Lance ${Math.min(s.turnInHalf, total)}/${total} · ${s.half}º tempo`}`;
-    const names = ['campo.png'];
-    if (this.lastFiles?.gif) names.push('passos.gif');
-    const blocks: Block[] = [text(title), images(...names), sep(), text(this.statusLine())];
+    const sub = s.finished ? 'Fim de partida' : this.lanceLabel;
+    const blocks: Block[] = [text(`## A ${s.score.A} : ${s.score.B} B\n-# ${this.label} · ${sub}`), images(this.imageName())];
     if (this.lastLog.length) blocks.push(text(this.lastLog.map((l) => `> ${l}`).join('\n')));
-    if (this.phase === 'planning') blocks.push(row(btn(cid('mt', 'plan', this.id), 'Planejar lance', ButtonStyle.Primary)));
-    if (this.phase === 'reaction') blocks.push(row(btn(cid('mt', 'react', this.id), 'Reagir', ButtonStyle.Primary)));
+    blocks.push(sep());
+    blocks.push(text(this.statusLine()));
+    const buttons = [];
+    if (this.phase === 'planning') buttons.push(btn(cid('mt', 'plan', this.id), 'Planejar meu lance', ButtonStyle.Primary));
+    if (this.phase === 'reaction') buttons.push(btn(cid('mt', 'react', this.id), 'Usar minha reação', ButtonStyle.Primary));
+    if (this.phase !== 'finished') buttons.push(btn(cid('mt', 'help', this.id), 'Como jogar', ButtonStyle.Secondary));
+    if (buttons.length) blocks.push(row(...buttons));
     const lowTime = this.phase !== 'finished' && this.deadline - Date.now() < 10_000 && this.deadline > Date.now();
     const spec: ScreenSpec = { accent: lowTime || this.warned ? 'aviso' : 'padrao', blocks };
-    if (withFiles && this.lastFiles) {
-      spec.files = [file(this.lastFiles.png, 'campo.png')];
-      if (this.lastFiles.gif) spec.files.push(file(this.lastFiles.gif, 'passos.gif'));
-    }
+    if (withFiles && this.lastImage) spec.files = [file(this.lastImage.data, this.lastImage.name)];
+    return spec;
+  }
+
+  /**
+   * Registro do lance resolvido: a mesma mensagem do lance vira o GIF do que
+   * aconteceu, sem botões. O lance seguinte sai numa mensagem nova, embaixo.
+   */
+  private recordSpec(prev: MatchState, result: TurnResult): ScreenSpec {
+    const s = this.state;
+    const blocks: Block[] = [text(`## A ${s.score.A} : ${s.score.B} B\n-# ${this.label} · ${this.lanceLabel} · resultado`), images(this.imageName())];
+    if (this.lastLog.length) blocks.push(text(this.lastLog.map((l) => `> ${l}`).join('\n')));
+    blocks.push(...explainBlocks(prev, result));
+    blocks.push(text(s.finished ? '-# Fim de partida. O relatório vem logo abaixo.' : '-# Lance encerrado. O próximo lance está logo abaixo.'));
+    const spec: ScreenSpec = { accent: result.goal ? 'sucesso' : 'padrao', blocks };
+    if (this.lastImage) spec.files = [file(this.lastImage.data, this.lastImage.name)];
     return spec;
   }
 
@@ -215,24 +240,41 @@ export class MatchSession {
   // Planejamento
   // ---------------------------------------------------------------------------
 
-  beginPlanning(refresh = true) {
+  /**
+   * Abre um lance: posta uma mensagem nova no canal (o chat fica livre durante
+   * a partida, então a mensagem do lance anterior já subiu) e começa o relógio.
+   */
+  async openLance(notice: string | null = null) {
     this.clearTimers();
     this.phase = 'planning';
     this.humanPlans = {};
     this.drafts.clear();
     this.warned = false;
+    const s = this.state;
+    const total = s.setup.turnsPerHalf;
+    this.lanceLabel = `Lance ${Math.min(s.turnInHalf, total)} de ${total} · ${s.half}º tempo`;
+    this.lastLog = notice ? [notice] : [];
+    this.lastImage = { name: 'campo.png', data: renderField(s, { showZones: true, legend: 'match', hudRight: this.label.toUpperCase() }) };
     this.deadline = Date.now() + this.planSeconds * 1000;
+    // até a mensagem nova sair, nenhuma edição pode cair no registro do lance anterior
+    this.message = null;
+    try {
+      this.message = await this.channel.send(screen(this.publicSpec(true)));
+    } catch (e) {
+      console.error('[partida] falha ao postar o lance', e);
+    }
+    // o relógio conta a partir do prazo mostrado na mensagem
+    const left = Math.max(0, this.deadline - Date.now());
     // sem humanos ativos: resolve direto (todos AFK/bots)
     if (!this.humanSlots().length) {
       this.timer = setTimeout(() => void this.proceed(), 2500);
     } else {
-      this.timer = setTimeout(() => void this.proceed(), this.planSeconds * 1000);
+      this.timer = setTimeout(() => void this.proceed(), left);
       this.warnTimer = setTimeout(() => {
         this.warned = true;
         void this.refresh(false);
-      }, Math.max(0, this.planSeconds * 1000 - 10_000));
+      }, Math.max(0, left - 10_000));
     }
-    if (refresh) void this.refresh(true);
   }
 
   draftFor(userId: string): { slotId: string; draft: Draft } {
@@ -241,7 +283,7 @@ export class MatchSession {
     let d = this.drafts.get(userId);
     if (!d) {
       const prev = this.humanPlans[slotId];
-      d = prev ? { ...planToDraft(prev), confirmed: true } : { step: 'main', keeperZone: this.state.players[slotId].isKeeper ? 1 : null };
+      d = prev ? { ...planToDraft(prev), confirmed: true } : newDraft(this.state, slotId);
       this.drafts.set(userId, d);
     }
     return { slotId, draft: d };
@@ -260,7 +302,7 @@ export class MatchSession {
       delete this.humanPlans[slotId];
       this.refreshSoon();
     } else {
-      const r = applyClick(this.state, slotId, draft, action, arg, values);
+      const r = applyClick(this.state, slotId, draft, action, arg, values, { mode: 'plan' });
       if (r === 'confirm') {
         draft.confirmed = true;
         this.humanPlans[slotId] = draftToPlan(slotId, draft);
@@ -295,8 +337,8 @@ export class MatchSession {
     this.reactions = reqs.filter((r) => this.isHumanSlot(r.playerId) && !afk.includes(r.playerId));
     this.reactionDone.clear();
     // revelação pública
-    const png = renderField(this.state, { arrows: arrowsFromRevelation(this.state, rev), hudRight: 'REVELAÇÃO', overlays: { reading: rev.filter((a) => a.reading).map((a) => a.dest) } });
-    this.lastFiles = { png, gif: null };
+    const png = renderField(this.state, { arrows: arrowsFromRevelation(this.state, rev), legend: 'match', hudRight: 'REVELAÇÃO', overlays: { reading: rev.filter((a) => a.reading).map((a) => a.dest) } });
+    this.lastImage = { name: 'campo.png', data: png };
     if (this.reactions.length) {
       this.phase = 'reaction';
       this.deadline = Date.now() + MATCH_RULES.reactionSeconds * 1000;
@@ -333,7 +375,7 @@ export class MatchSession {
   reactionClick(userId: string, action: string, arg: string | undefined, values: string[] | null): ScreenSpec | null {
     const r = this.reactionFor(userId);
     if (!r) return null;
-    const res = applyClick(this.state, r.slotId, r.draft, action, arg, values);
+    const res = applyClick(this.state, r.slotId, r.draft, action, arg, values, { mode: 'react', reaction: r.req });
     if (res === 'confirm') {
       const cur = this.pendingPlans[r.slotId];
       const next = draftToPlan(r.slotId, r.draft);
@@ -374,7 +416,6 @@ export class MatchSession {
     }
     this.state = result.state;
     this.turns.push(result.plans);
-    const png = renderField(this.state, { arrows: arrowsFromResult(prev, result), overlays: overlaysFromResult(prev, result), hudRight: this.label.toUpperCase() });
     let gif: Buffer | null = null;
     if (this.gifEnabled) {
       try {
@@ -383,12 +424,25 @@ export class MatchSession {
         console.error('[partida] falha no GIF', e);
       }
     }
-    this.lastFiles = { png, gif };
+    this.lastImage = gif
+      ? { name: 'lance.gif', data: gif }
+      : { name: 'campo.png', data: renderField(this.state, { arrows: arrowsFromResult(prev, result), overlays: overlaysFromResult(prev, result), legend: 'match', hudRight: 'RESULTADO', banner: turnBanner(prev, result) }) };
     this.lastLog = result.log;
-    await saveSnapshot(this.id, this.state, this.turns).catch((e) => console.error('[partida] snapshot', e));
+    // a mensagem do lance vira o registro do que aconteceu (GIF, narração, sem botões)
+    if (this.message) {
+      try {
+        await this.message.edit(edit(this.recordSpec(prev, result)));
+      } catch (e) {
+        console.error('[partida] falha ao registrar o lance', e);
+      }
+    }
     if (this.debugAi) await this.postDebug(prev.turn);
-    if (this.state.finished) return this.finish();
-    this.beginPlanning(true);
+    if (this.state.finished) {
+      await saveSnapshot(this.id, this.state, this.turns).catch((e) => console.error('[partida] snapshot', e));
+      return this.finish();
+    }
+    await this.openLance();
+    await saveSnapshot(this.id, this.state, this.turns, this.message?.id ?? null).catch((e) => console.error('[partida] snapshot', e));
   }
 
   private async postDebug(turn: number) {
@@ -403,8 +457,9 @@ export class MatchSession {
     }
     const spec: ScreenSpec = { accent: 'aviso', blocks: [text(lines.join('\n').slice(0, 3800))] };
     try {
-      if (this.debugMessage) await this.debugMessage.edit({ components: edit(spec).components });
-      else this.debugMessage = await this.channel.send(screen(spec));
+      // uma só por vez, sempre logo abaixo do lance a que se refere
+      await this.debugMessage?.delete().catch(() => {});
+      this.debugMessage = await this.channel.send(screen(spec));
     } catch (e) {
       console.error('[debug-ia]', e);
     }
@@ -413,7 +468,7 @@ export class MatchSession {
   async finish() {
     this.clearTimers();
     this.phase = 'finished';
-    await this.refresh(true);
+    // o último lance já está registrado na própria mensagem; o relatório sai embaixo
     try {
       const spec = await this.onFinish(this);
       if (spec) await this.channel.send(screen(spec));

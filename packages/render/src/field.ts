@@ -2,18 +2,21 @@ import { createCanvas, type Canvas } from '@napi-rs/canvas';
 import { gifenc } from './gif';
 import { COLORS, MASTERY, MATCH_RULES, RARITY_COLORS, findCosmetic, findSkill, getLineage, masteryLevel } from '@ego/content';
 import {
+  goalCenter,
   goalRows,
   hasStatus,
   isInArea,
+  turnCaptions,
   zoneRadius,
   type ArrowCategory,
   type Cell,
   type MatchState,
   type PublicArrow,
   type StepFrame,
+  type Team,
   type TurnResult,
 } from '@ego/engine';
-import { FONT, arrowHead, cutRect, ensureFonts, isLightColor, text, withAlpha, type Ctx } from './draw';
+import { FONT, arrowHead, cutRect, ensureFonts, fitText, isLightColor, text, withAlpha, type Ctx } from './draw';
 
 export type ArrowKind = ArrowCategory | 'habilidade';
 
@@ -48,6 +51,31 @@ export interface FieldOptions {
   /** Sobrescreve posições (quadros do GIF). */
   frame?: StepFrame;
   labels?: boolean;
+  /** Faixa de legenda abaixo do campo: cores das setas ('match') ou do painel ('plan'). */
+  legend?: 'match' | 'plan';
+  /** Opacidade das setas (quadros de movimento do GIF). */
+  arrowAlpha?: number;
+  /** Casas alcançáveis (painel de planejamento). */
+  reach?: Cell[];
+  /** Plano do jogador no painel: seta até o destino e, se houver, a linha do passe ou do chute. */
+  plan?: { from: Cell; to: Cell; pass?: Cell | null; shot?: Cell | null };
+  /** Etiqueta acima de um token (ex.: "VOCÊ"). */
+  tag?: { id: string; text: string };
+  /** Nomeia os gols do ponto de vista deste time ("SEU GOL" / "ATAQUE"). Sem isso: "GOL A" / "GOL B". */
+  side?: Team;
+  /** Casa objetivo (tutorial). */
+  mark?: Cell;
+  /** Placar do HUD (quadros do GIF). */
+  score?: Record<Team, number>;
+  /** Faixa de destaque sobre o campo. */
+  banner?: Banner | null;
+  /** Legenda do momento (GIF): ocupa a faixa de baixo no lugar da legenda das setas. */
+  caption?: string | null;
+}
+
+export interface Banner {
+  text: string;
+  tone: 'goal' | 'info' | 'alert';
 }
 
 const { GIFEncoder, applyPalette, quantize } = gifenc;
@@ -244,7 +272,7 @@ function drawArrow(ctx: Ctx, g: Geo, a: ArrowSpec) {
   ctx.restore();
 }
 
-function drawToken(ctx: Ctx, state: MatchState, g: Geo, id: string, c: Cell, holder: string | null, highlight: boolean, labels: boolean) {
+function drawToken(ctx: Ctx, state: MatchState, g: Geo, id: string, c: Cell, holder: string | null, highlight: boolean, labels: boolean, tag: string | null = null) {
   const slot = state.setup.slots.find((s) => s.id === id)!;
   const p = state.players[id];
   const { x, y } = center(g, c);
@@ -321,6 +349,23 @@ function drawToken(ctx: Ctx, state: MatchState, g: Geo, id: string, c: Cell, hol
     ctx.fillStyle = 'rgba(7,11,18,0.75)';
     ctx.fillRect(x - tw / 2 - 3, y + r + 4, tw + 6, Math.round(g.s * 0.22) + 2);
     text(ctx, name, x, y + r + 5, FONT.cond(Math.max(11, Math.round(g.s * 0.2)), 600), '#FFFFFF', 'center', 'top');
+  }
+  if (tag) {
+    const font = FONT.cond(Math.max(12, Math.round(g.s * 0.24)), 700);
+    ctx.font = font;
+    const tw = ctx.measureText(tag).width;
+    const h = Math.round(g.s * 0.28) + 4;
+    const top = y - r - 8 - h;
+    ctx.fillStyle = COLORS.electricBright;
+    cutRect(ctx, x - tw / 2 - 6, top, tw + 12, h, 4);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - 5, top + h);
+    ctx.lineTo(x + 5, top + h);
+    ctx.lineTo(x, top + h + 5);
+    ctx.closePath();
+    ctx.fill();
+    text(ctx, tag, x, top + h / 2 + 1, font, '#FFFFFF', 'center', 'middle');
   }
 }
 
@@ -431,9 +476,230 @@ function drawNumbers(ctx: Ctx, g: Geo, cells: Cell[]) {
   });
 }
 
+/** Casas alcançáveis: o resto do campo escurece e o contorno da área alcançável acende. */
+function drawReach(ctx: Ctx, g: Geo, cells: Cell[]) {
+  const inReach = new Set(cells.map((c) => `${c.x},${c.y}`));
+  const has = (x: number, y: number) => inReach.has(`${x},${y}`);
+  ctx.save();
+  ctx.fillStyle = 'rgba(4,7,12,0.62)';
+  for (let x = g.x0; x < g.x0 + g.cols; x++)
+    for (let y = g.y0; y < g.y0 + g.rows; y++) {
+      if (has(x, y)) continue;
+      ctx.fillRect(g.ox + (x - g.x0) * g.s, g.oy + (y - g.y0) * g.s, g.s, g.s);
+    }
+  // borda externa da área alcançável
+  ctx.strokeStyle = COLORS.electricBright;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const seg = (ax: number, ay: number, bx: number, by: number) => {
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+  };
+  for (const c of cells) {
+    if (!inCrop(g, c)) continue;
+    const x0 = g.ox + (c.x - g.x0) * g.s;
+    const y0 = g.oy + (c.y - g.y0) * g.s;
+    if (!has(c.x, c.y - 1)) seg(x0, y0, x0 + g.s, y0);
+    if (!has(c.x, c.y + 1)) seg(x0, y0 + g.s, x0 + g.s, y0 + g.s);
+    if (!has(c.x - 1, c.y)) seg(x0, y0, x0, y0 + g.s);
+    if (!has(c.x + 1, c.y)) seg(x0 + g.s, y0, x0 + g.s, y0 + g.s);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Linha tracejada com ponta (passe e chute do plano). */
+function dashedArrow(ctx: Ctx, g: Geo, from: Cell, to: Cell, color: string) {
+  const a = center(g, from);
+  const b = center(g, to);
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (len < 1) return;
+  const ux = (b.x - a.x) / len;
+  const uy = (b.y - a.y) / len;
+  const ex = b.x - ux * g.s * 0.25;
+  const ey = b.y - uy * g.s * 0.25;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([7, 6]);
+  ctx.beginPath();
+  ctx.moveTo(a.x + ux * g.s * 0.3, a.y + uy * g.s * 0.3);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  arrowHead(ctx, a.x, a.y, ex, ey, 14);
+  ctx.restore();
+}
+
+/** Plano do jogador no painel: seta grossa até o destino, anel no destino, passe ou chute saindo de lá. */
+function drawPlan(ctx: Ctx, g: Geo, plan: NonNullable<FieldOptions['plan']>) {
+  const to = center(g, plan.to);
+  if (plan.from.x !== plan.to.x || plan.from.y !== plan.to.y) {
+    const from = center(g, plan.from);
+    const len = Math.hypot(to.x - from.x, to.y - from.y);
+    const ux = (to.x - from.x) / len;
+    const uy = (to.y - from.y) / len;
+    const sx = from.x + ux * g.s * 0.36;
+    const sy = from.y + uy * g.s * 0.36;
+    const ex = to.x - ux * g.s * 0.3;
+    const ey = to.y - uy * g.s * 0.3;
+    ctx.save();
+    ctx.strokeStyle = withAlpha(COLORS.electricBright, 0.35);
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    arrowHead(ctx, sx, sy, ex, ey, 16);
+    ctx.restore();
+  }
+  // anel do destino
+  ctx.save();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 3;
+  cutRect(ctx, to.x - g.s / 2 + 3, to.y - g.s / 2 + 3, g.s - 6, g.s - 6, 8);
+  ctx.stroke();
+  ctx.restore();
+  if (plan.pass) dashedArrow(ctx, g, plan.to, plan.pass, '#FFFFFF');
+  if (plan.shot) dashedArrow(ctx, g, plan.to, plan.shot, COLORS.electricBright);
+}
+
+/** Casa objetivo do tutorial. */
+function drawMark(ctx: Ctx, g: Geo, c: Cell) {
+  const { x, y } = center(g, c);
+  ctx.save();
+  ctx.fillStyle = withAlpha(COLORS.amber, 0.22);
+  ctx.fillRect(x - g.s / 2 + 2, y - g.s / 2 + 2, g.s - 4, g.s - 4);
+  ctx.strokeStyle = COLORS.amber;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(x - g.s / 2 + 3, y - g.s / 2 + 3, g.s - 6, g.s - 6);
+  ctx.setLineDash([]);
+  ctx.restore();
+  text(ctx, 'AQUI', x, y, FONT.cond(Math.round(g.s * 0.26), 700), COLORS.amber, 'center', 'middle');
+}
+
+/** Nome de cada gol, dentro da área. */
+function drawGoalLabels(ctx: Ctx, state: MatchState, g: Geo, side?: Team) {
+  const f = state.setup.field;
+  const rows = goalRows(f);
+  const y = rows[0] - MATCH_RULES.areaExtraRows;
+  for (const team of ['A', 'B'] as const) {
+    const gx = team === 'A' ? 0 : f.width - 1;
+    const c = { x: team === 'A' ? 0.5 : f.width - 1.5, y };
+    if (!inCrop(g, { x: gx, y })) continue;
+    const p = center(g, c);
+    const label = side ? (team === side ? 'SEU GOL' : 'SEU ATAQUE') : `GOL ${team}`;
+    const color = side && team !== side ? COLORS.electricBright : COLORS.muted;
+    text(ctx, label, p.x, p.y - g.s * 0.5 + 6, FONT.cond(Math.max(11, Math.round(g.s * 0.21)), 700), color, 'center', 'top');
+  }
+}
+
+const LEGEND_H = 34;
+
+function legendLine(ctx: Ctx, x: number, y: number, color: string, dashed: boolean, glow: boolean) {
+  ctx.save();
+  if (glow) {
+    ctx.strokeStyle = withAlpha(COLORS.electric, 0.4);
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 22, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 3;
+  if (dashed) ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + 22, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  arrowHead(ctx, x, y, x + 26, y, 8);
+  ctx.restore();
+  return x + 32;
+}
+
+function drawLegend(ctx: Ctx, kind: 'match' | 'plan', w: number, top: number) {
+  ctx.fillStyle = COLORS.panel;
+  ctx.fillRect(0, top, w, LEGEND_H);
+  const y = top + LEGEND_H / 2;
+  const font = FONT.cond(13, 600);
+  let x = 14;
+  const label = (s: string) => {
+    text(ctx, s, x, y + 1, font, COLORS.muted, 'left', 'middle');
+    ctx.font = font;
+    x += ctx.measureText(s).width + 16;
+  };
+  if (kind === 'match') {
+    x = legendLine(ctx, x, y, ARROW_COLOR.ataque, false, false);
+    label('COM A BOLA');
+    x = legendLine(ctx, x, y, ARROW_COLOR.apoio, false, false);
+    label('APOIO');
+    x = legendLine(ctx, x, y, ARROW_COLOR.defesa, true, false);
+    label('DEFESA');
+    x = legendLine(ctx, x, y, ARROW_COLOR.habilidade, false, true);
+    label('HABILIDADE');
+    // posse
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#070B12';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 6, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    x += 18;
+    label('BOLA');
+  } else {
+    ctx.strokeStyle = COLORS.electricBright;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y - 7, 14, 14);
+    x += 22;
+    label('ALCANCE DO LANCE');
+    ctx.fillStyle = withAlpha('#C9D3E0', 0.25);
+    ctx.fillRect(x, y - 8, 16, 16);
+    x += 22;
+    label('ZONA DE CONTROLE');
+    x = legendLine(ctx, x, y, '#FFFFFF', false, false);
+    label('SEU PLANO');
+  }
+}
+
+function drawCaption(ctx: Ctx, caption: string, w: number, top: number) {
+  ctx.fillStyle = COLORS.panel;
+  ctx.fillRect(0, top, w, LEGEND_H);
+  ctx.fillStyle = COLORS.amber;
+  ctx.fillRect(0, top, 5, LEGEND_H);
+  fitText(ctx, caption, 16, top + LEGEND_H / 2 + 6, w - 28, (px) => FONT.cond(px, 700), 17, '#FFFFFF');
+}
+
+function drawBanner(ctx: Ctx, g: Geo, b: Banner) {
+  const w = g.cols * g.s;
+  const h = Math.round(g.s * 0.9);
+  const y = g.oy + Math.round(g.s * 0.35);
+  const color = b.tone === 'goal' ? COLORS.electricBright : b.tone === 'alert' ? COLORS.amber : '#FFFFFF';
+  ctx.save();
+  ctx.fillStyle = 'rgba(7,11,18,0.82)';
+  ctx.fillRect(g.ox, y, w, h);
+  ctx.fillStyle = color;
+  ctx.fillRect(g.ox, y, 6, h);
+  ctx.fillRect(g.ox + w - 6, y, 6, h);
+  ctx.restore();
+  text(ctx, b.text, g.ox + w / 2, y + h / 2 + 2, FONT.display(Math.round(h * 0.6)), color, 'center', 'middle');
+}
+
 const HUD_H = 52;
 
-function drawHud(ctx: Ctx, state: MatchState, w: number, right?: string) {
+function drawHud(ctx: Ctx, state: MatchState, w: number, right?: string, score = state.score) {
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, w, HUD_H);
   ctx.fillStyle = COLORS.electric;
@@ -449,9 +715,9 @@ function drawHud(ctx: Ctx, state: MatchState, w: number, right?: string) {
   ctx.fillRect(x, 14, 8, 24);
   x += 16;
   put('A', FONT.display(24), '#FFFFFF', 14);
-  put(String(state.score.A), FONT.display(34), '#FFFFFF', 8, 40);
+  put(String(score.A), FONT.display(34), '#FFFFFF', 8, 40);
   put(':', FONT.display(28), COLORS.muted, 8);
-  put(String(state.score.B), FONT.display(34), '#FFFFFF', 14, 40);
+  put(String(score.B), FONT.display(34), '#FFFFFF', 14, 40);
   put('B', FONT.display(24), '#FFFFFF', 8);
   ctx.fillStyle = COLORS.teamB;
   ctx.fillRect(x, 14, 8, 24);
@@ -472,7 +738,7 @@ function geometry(state: MatchState, opts: FieldOptions): { g: Geo; w: number; h
   const hud = opts.hud !== false && !opts.crop;
   const pad = 14;
   const g: Geo = { s, ox: pad, oy: (hud ? HUD_H : 0) + pad, x0: crop.x0, y0: crop.y0, cols, rows };
-  return { g, w: cols * s + pad * 2, h: rows * s + pad * 2 + (hud ? HUD_H : 0) };
+  return { g, w: cols * s + pad * 2, h: rows * s + pad * 2 + (hud ? HUD_H : 0) + (opts.legend || opts.caption ? LEGEND_H : 0) };
 }
 
 export function drawField(state: MatchState, opts: FieldOptions = {}): Canvas {
@@ -482,7 +748,7 @@ export function drawField(state: MatchState, opts: FieldOptions = {}): Canvas {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, w, h);
-  if (opts.hud !== false && !opts.crop) drawHud(ctx, state, w, opts.hudRight);
+  if (opts.hud !== false && !opts.crop) drawHud(ctx, state, w, opts.hudRight, opts.score);
   drawPitch(ctx, state, g);
   const pos: Record<string, Cell> = opts.frame ? opts.frame.positions : Object.fromEntries(state.order.map((id) => [id, state.players[id].pos]));
   const holder = opts.frame ? opts.frame.holder : state.ball.holder;
@@ -497,15 +763,25 @@ export function drawField(state: MatchState, opts: FieldOptions = {}): Canvas {
     }
   }
   if (opts.showZones) drawZones(ctx, state, g, pos);
+  if (opts.reach) drawReach(ctx, g, opts.reach);
+  if (!opts.crop) drawGoalLabels(ctx, state, g, opts.side);
+  if (opts.mark) drawMark(ctx, g, opts.mark);
+  ctx.save();
+  ctx.globalAlpha = opts.arrowAlpha ?? 1;
   for (const a of opts.arrows ?? []) if (inCrop(g, a.from) || inCrop(g, a.to)) drawArrow(ctx, g, a);
+  ctx.restore();
+  if (opts.plan) drawPlan(ctx, g, opts.plan);
   if (!holder && inCrop(g, ball)) drawBallLoose(ctx, g, ball);
   for (const id of state.order) {
     const c = pos[id];
     if (!inCrop(g, c)) continue;
-    drawToken(ctx, state, g, id, c, holder, opts.highlight === id, opts.labels !== false);
+    drawToken(ctx, state, g, id, c, holder, opts.highlight === id, opts.labels !== false, opts.tag?.id === id ? opts.tag.text : null);
   }
   if (opts.overlays) drawOverlays(ctx, g, opts.overlays);
   if (opts.numbered) drawNumbers(ctx, g, opts.numbered);
+  if (opts.banner) drawBanner(ctx, g, opts.banner);
+  if (opts.caption) drawCaption(ctx, opts.caption, w, h - LEGEND_H);
+  else if (opts.legend) drawLegend(ctx, opts.legend, w, h - LEGEND_H);
   return canvas;
 }
 
@@ -596,27 +872,202 @@ export function renderPlanning(state: MatchState, playerId: string, cells: Cell[
   return renderField(state, { crop, numbered: cells, highlight: playerId, cell: opts.cell ?? 56, hud: false, labels: true, showZones: true });
 }
 
+export interface PlanViewOptions {
+  /** Casas alcançáveis (etapa de destino). */
+  reach?: Cell[];
+  /** Destino escolhido até agora. */
+  dest?: Cell | null;
+  /** Para onde vai a bola (passe) saindo do destino. */
+  pass?: Cell | null;
+  /** Chute: a linha vai do destino até o gol. */
+  shot?: boolean;
+  /** Casas numeradas (passe no espaço). */
+  numbered?: Cell[];
+  /** Casa objetivo (tutorial). */
+  mark?: Cell | null;
+  cell?: number;
+}
+
+/**
+ * Campo inteiro do ponto de vista de um jogador: "VOCÊ" sobre o token, gols
+ * nomeados (seu gol / seu ataque), alcance do lance e o plano desenhado.
+ */
+export function renderPlanView(state: MatchState, playerId: string, o: PlanViewOptions = {}): Buffer {
+  const f = state.setup.field;
+  const p = state.players[playerId];
+  const dest = o.dest ?? p.pos;
+  const shotTo = o.shot ? goalCenter(p.team === 'A' ? f.width - 1 : 0, f) : null;
+  const drawPlanLayer = !!o.dest || !!o.pass || !!shotTo;
+  return renderField(state, {
+    cell: o.cell ?? (f.width > 13 ? 46 : 52),
+    hud: false,
+    labels: true,
+    showZones: true,
+    highlight: playerId,
+    tag: { id: playerId, text: 'VOCÊ' },
+    side: p.team,
+    reach: o.reach,
+    numbered: o.numbered,
+    mark: o.mark ?? undefined,
+    plan: drawPlanLayer ? { from: p.pos, to: dest, pass: o.pass ?? null, shot: shotTo } : undefined,
+    legend: 'plan',
+  });
+}
+
 // ---------------------------------------------------------------------------
-// GIF curto dos passos
+// GIF do lance
 // ---------------------------------------------------------------------------
 
-export function renderStepsGif(prev: MatchState, r: TurnResult, opts: { cell?: number; delay?: number } = {}): Buffer {
-  const cell = opts.cell ?? 40;
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const lerpCell = (a: Cell, b: Cell, t: number): Cell => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
+
+function ballAt(fr: StepFrame): Cell {
+  return fr.holder ? fr.positions[fr.holder] : fr.ball;
+}
+
+function tween(a: StepFrame, b: StepFrame, t: number): StepFrame {
+  const positions: Record<string, Cell> = {};
+  for (const id of Object.keys(b.positions)) positions[id] = lerpCell(a.positions[id] ?? b.positions[id], b.positions[id], t);
+  // a bola acompanha quem a tinha no começo do passo
+  const holder = t < 1 ? a.holder : b.holder;
+  return { positions, holder, ball: holder ? positions[holder] : lerpCell(a.ball, b.ball, t) };
+}
+
+const upper = (s: string) => s.toLocaleUpperCase('pt-BR');
+
+/** Faixa do resultado do lance (gol, defesa, desarme...). */
+export function turnBanner(prev: MatchState, r: TurnResult): Banner | null {
+  const name = (id: string | null | undefined) => upper(prev.setup.slots.find((s) => s.id === id)?.name ?? '');
+  const goal = r.events.find((e) => e.t === 'goal');
+  if (goal?.t === 'goal') return { text: `GOL! ${name(goal.scorer)}`, tone: 'goal' };
+  for (const e of r.events) {
+    if (e.t === 'save') return { text: `DEFESA DE ${name(e.keeper)}`, tone: 'info' };
+    if (e.t === 'block') return { text: `CHUTE BLOQUEADO`, tone: 'info' };
+    if (e.t === 'pass' && e.result === 'intercepted') return { text: `PASSE CORTADO${e.by ? ` POR ${name(e.by)}` : ''}`, tone: 'alert' };
+    if (e.t === 'steal') return { text: `DESARME DE ${name(e.to)}`, tone: 'alert' };
+  }
+  for (const e of r.events) {
+    if (e.t === 'pass' && e.result === 'astray') return { text: 'PASSE TORTO', tone: 'alert' };
+    if (e.t === 'out') return { text: 'BOLA PARA FORA', tone: 'alert' };
+  }
+  return null;
+}
+
+/** Marcas de duelo que já aconteceram até o passo `upto`. */
+function duelMarks(prev: MatchState, r: TurnResult, upto: number): NonNullable<Overlays['duels']> {
+  const out: NonNullable<Overlays['duels']> = [];
+  for (const e of r.events) {
+    if (e.t !== 'duel' || e.step > upto) continue;
+    const fr = r.frames[Math.min(e.step, r.frames.length - 1)];
+    out.push({ cell: fr?.positions[e.attacker] ?? prev.players[e.attacker].pos, won: e.winner });
+  }
+  return out;
+}
+
+/** Codifica quadros com uma paleta global (mais rápido e menor que uma por quadro). */
+function encodeGif(canvases: Canvas[], delays: number[]): Buffer {
   const gif = GIFEncoder();
-  const arrows = arrowsFromResult(prev, r);
-  const frames = r.frames.length ? r.frames : [{ positions: Object.fromEntries(prev.order.map((id) => [id, prev.players[id].pos])), ball: prev.ball.pos, holder: prev.ball.holder }];
-  const overlays = overlaysFromResult(prev, r);
-  frames.forEach((fr, i) => {
-    const isLast = i === frames.length - 1;
-    const canvas = drawField(prev, { cell, frame: fr, hud: false, labels: false, arrows: i === 0 ? arrows : [], overlays: isLast ? overlays : undefined });
-    const ctx = canvas.getContext('2d');
-    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const palette = quantize(data, 128);
+  const datas = canvases.map((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data);
+  // paleta do primeiro (setas) e do último quadro (sobreposições e faixa)
+  const first = datas[0];
+  const last = datas[datas.length - 1];
+  const sample = new Uint8ClampedArray(first.length + last.length);
+  sample.set(first, 0);
+  sample.set(last, first.length);
+  const palette = quantize(sample, 256);
+  datas.forEach((data, i) => {
     const index = applyPalette(data, palette);
-    gif.writeFrame(index, width, height, { palette, delay: isLast ? 1400 : i === 0 ? 700 : (opts.delay ?? 320) });
+    gif.writeFrame(index, canvases[i].width, canvases[i].height, i === 0 ? { palette, delay: delays[i] } : { delay: delays[i] });
   });
   gif.finish();
   return Buffer.from(gif.bytes());
 }
+
+export interface TurnGifOptions {
+  cell?: number;
+  /** Subquadros entre dois passos de movimento. */
+  smooth?: number;
+}
+
+/**
+ * GIF do lance no tamanho do campo da mensagem: planos (setas), movimento
+ * suave passo a passo, a bola voando no passe/chute, o resultado com faixa
+ * e, se houve gol ou intervalo, a saída de bola. O último quadro é sempre o
+ * campo como ele está agora.
+ */
+export function renderStepsGif(prev: MatchState, r: TurnResult, opts: TurnGifOptions = {}): Buffer {
+  const smooth = Math.max(1, opts.smooth ?? 3);
+  const arrows = arrowsFromResult(prev, r);
+  const still: StepFrame = { positions: Object.fromEntries(prev.order.map((id) => [id, prev.players[id].pos])), ball: prev.ball.pos, holder: prev.ball.holder };
+  const frames = r.frames.length ? r.frames : [still];
+  const base: FieldOptions = { cell: opts.cell, legend: 'match', score: prev.score };
+  const canvases: Canvas[] = [];
+  const delays: number[] = [];
+  const push = (o: FieldOptions, delay: number, state: MatchState = prev) => {
+    canvases.push(drawField(state, { ...base, ...o }));
+    delays.push(delay);
+  };
+
+  const captions = turnCaptions(prev, r);
+  // o quadro de cada passo é tirado antes dos duelos do passo: no quadro com a legenda, a bola já vai com quem roubou
+  const afterDuels = (fr: StepFrame, step: number): StepFrame => {
+    const st = r.events.find((e) => e.t === 'steal' && e.step === step);
+    return st?.t === 'steal' && fr.positions[st.to] ? { ...fr, holder: st.to, ball: fr.positions[st.to] } : fr;
+  };
+
+  // 1. planos de todos
+  push({ frame: frames[0], arrows, hudRight: 'PLANOS DO LANCE', caption: 'AS SETAS MOSTRAM PARA ONDE CADA UM FOI NESTE LANCE' }, 1600);
+
+  // duelos de quem já começou colado (antes de andar)
+  if (captions.byStep[0]) push({ frame: afterDuels(frames[0], 0), arrows, arrowAlpha: 0.3, hudRight: 'ANTES DE ANDAR', overlays: { duels: duelMarks(prev, r, 0) }, caption: captions.byStep[0] }, 2200);
+
+  // 2. movimento: do quadro 0 ao penúltimo (o último é a ação de bola)
+  const lastMove = Math.max(0, frames.length - 2);
+  for (let i = 1; i <= lastMove; i++) {
+    const label = `MOVIMENTO ${i}/${lastMove}`;
+    for (let k = 1; k <= smooth; k++) {
+      const t = k / smooth;
+      const key = k === smooth;
+      // no quadro-chave do passo, a legenda conta o que aconteceu nele (e segura mais tempo para dar para ler)
+      const caption = key ? captions.byStep[i] : undefined;
+      push({ frame: key ? afterDuels(frames[i], i) : tween(afterDuels(frames[i - 1], i - 1), frames[i], t), arrows, arrowAlpha: 0.3, hudRight: label, overlays: { duels: duelMarks(prev, r, key ? i : i - 1) }, caption }, key ? (caption ? 2200 : 260) : 90);
+    }
+  }
+
+  // 3. ação de bola: a bola viaja até onde terminou
+  const before = afterDuels(frames[Math.max(0, frames.length - 2)], lastMove);
+  const after = frames[frames.length - 1];
+  const from = ballAt(before);
+  const to = ballAt(after);
+  const moved = frames.length > 1 && (from.x !== to.x || from.y !== to.y);
+  const shot = r.events.find((e) => e.t === 'shot');
+  const pass = r.events.find((e) => e.t === 'pass');
+  if (moved) {
+    const label = shot ? 'CHUTE' : pass ? 'PASSE' : 'BOLA';
+    const steps = Math.max(3, Math.min(7, Math.round(Math.hypot(to.x - from.x, to.y - from.y))));
+    for (let k = 1; k < steps; k++) {
+      const b = lerpCell(from, to, k / steps);
+      push({ frame: { positions: after.positions, holder: null, ball: b }, hudRight: label, overlays: { duels: duelMarks(prev, r, 99) }, caption: captions.ball }, 60);
+    }
+  }
+
+  // 4. resultado
+  const banner = turnBanner(prev, r);
+  push({ frame: after, hudRight: 'RESULTADO', overlays: { ...overlaysFromResult(prev, r) }, banner, score: r.state.score, caption: captions.ball }, captions.ball ? 2600 : banner ? 2200 : 1800);
+
+  // 5. campo de agora, se a saída de bola recolocou todo mundo
+  const reset = prev.order.some((id) => {
+    const a = after.positions[id];
+    const b = r.state.players[id].pos;
+    return !a || a.x !== b.x || a.y !== b.y;
+  });
+  // segura o campo de agora, com as zonas: é o que os jogadores vão planejar
+  const nowLabel = r.state.finished ? 'FIM' : reset ? (r.state.half !== prev.half ? 'INTERVALO' : 'SAÍDA DE BOLA') : 'AGORA';
+  push({ showZones: true, hudRight: nowLabel, score: r.state.score }, 2600, r.state);
+  return encodeGif(canvases, delays);
+}
+
+/** Nome mais claro para o GIF do lance. */
+export const renderTurnGif = renderStepsGif;
 
 export { findSkill };

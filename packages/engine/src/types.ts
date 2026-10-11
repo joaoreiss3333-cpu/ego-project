@@ -204,11 +204,61 @@ export interface MatchState {
 
 export type DuelKind = 'drible' | 'protecao' | 'passe' | 'conducao' | 'cobertura' | 'chute';
 
+/** Uma parcela de uma rolagem (atributo, dado, bônus), para explicar o resultado ao jogador. */
+export interface RollPart {
+  label: string;
+  value: number;
+}
+
 export type MatchEvent =
-  | { t: 'duel'; step: number; attacker: string; defender: string; kind: DuelKind; atk: number; def: number; winner: 'atk' | 'def'; skill?: string | null }
+  | {
+      t: 'duel';
+      step: number;
+      attacker: string;
+      defender: string;
+      kind: DuelKind;
+      atk: number;
+      def: number;
+      winner: 'atk' | 'def';
+      skill?: string | null;
+      /** Ações dos dois no duelo e a conta de cada lado (a soma dá atk/def). */
+      atkAction?: ActionKind;
+      defAction?: ActionKind;
+      atkParts?: RollPart[];
+      defParts?: RollPart[];
+    }
   | { t: 'steal'; step: number; from: string; to: string }
-  | { t: 'pass'; from: string; to: string | null; cell: Cell; kind: 'pe' | 'espaco' | 'tabela'; roll: number; result: 'ok' | 'intercepted' | 'astray' | 'loose' | 'out'; by?: string | null; landed?: Cell }
-  | { t: 'shot'; shooter: string; zone: GoalZone; keeper: string | null; keeperZone: GoalZone | null; roll: number; keeperRoll: number; goal: boolean; blockedBy?: string | null; oneTouch: boolean; distance: number }
+  | {
+      t: 'pass';
+      from: string;
+      to: string | null;
+      cell: Cell;
+      kind: 'pe' | 'espaco' | 'tabela';
+      roll: number;
+      result: 'ok' | 'intercepted' | 'astray' | 'loose' | 'out';
+      by?: string | null;
+      landed?: Cell;
+      parts?: RollPart[];
+      /** Conta de quem cortou (só em 'intercepted'). */
+      interceptRoll?: number;
+      interceptParts?: RollPart[];
+    }
+  | {
+      t: 'shot';
+      shooter: string;
+      zone: GoalZone;
+      keeper: string | null;
+      keeperZone: GoalZone | null;
+      roll: number;
+      keeperRoll: number;
+      goal: boolean;
+      blockedBy?: string | null;
+      oneTouch: boolean;
+      distance: number;
+      parts?: RollPart[];
+      /** Conta do goleiro, ou de quem bloqueou. */
+      keeperParts?: RollPart[];
+    }
   | { t: 'goal'; team: Team; scorer: string; assist: string | null; oneTouch: boolean }
   | { t: 'save'; keeper: string; shooter: string }
   | { t: 'block'; blocker: string; shooter: string }

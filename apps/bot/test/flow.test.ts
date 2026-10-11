@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createCharacter, prisma, spin } from '@ego/db';
-import { numberedCells } from '../src/match/panel';
+import { reachFor } from '../src/match/panel';
 import { startMatch } from '../src/match/start';
 import { sessions } from '../src/match/session';
 import { profileScreen } from '../src/features/profile';
@@ -12,6 +12,10 @@ const PREFIX = `bottest-${Date.now()}-`;
 
 /** Valida o payload como o Discord faria: builders.toJSON() + limites. */
 function validate(p: Payload) {
+  // Components V2: no máximo 4000 caracteres de texto somando a mensagem inteira
+  const all = JSON.stringify(p.components.map((c) => c.toJSON()));
+  const texts = [...all.matchAll(/"content":"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string);
+  expect(texts.reduce((a, t) => a + t.length, 0)).toBeLessThanOrEqual(4000);
   for (const c of p.components) {
     const json = c.toJSON() as { components: { type: number; components?: { custom_id?: string }[] }[] };
     const walk = (x: unknown) => {
@@ -22,6 +26,12 @@ function validate(p: Payload) {
     };
     walk(json);
   }
+}
+
+/** Algum botão ou menu na mensagem? */
+function hasButtons(p: Payload): boolean {
+  const json = JSON.stringify(p.components.map((c) => c.toJSON()));
+  return json.includes('"custom_id"');
 }
 
 function fakeChannel() {
@@ -70,7 +80,7 @@ d('bot: fluxo completo sem Discord', () => {
       await spin(c.id);
       chars.push((await prisma.character.findUniqueOrThrow({ where: { id: c.id } }))!);
     }
-    const { channel, sent } = fakeChannel();
+    const { channel, sent, edits } = fakeChannel();
     const s = await startMatch({
       guildId: 'g-bot',
       channel: channel as never,
@@ -92,27 +102,42 @@ d('bot: fluxo completo sem Discord', () => {
         validate(edit(panel));
         const slotId = s.slotOfUser(u)!;
         const draft = s.draftFor(u).draft;
-        const cells = numberedCells(s.state, slotId, draft);
-        const dest = cells[Math.floor(cells.length / 2)];
-        let spec = s.click(u, 'dest', '0', [`${dest.x},${dest.y}`]);
         const holder = s.state.ball.holder === slotId;
-        spec = s.click(u, 'act', holder ? 'conduzir' : 'mover', null);
+        // etapa 1: ação (menu) avança sozinha para o destino
+        let spec = s.click(u, 'act', undefined, [holder ? 'conduzir' : 'mover']);
+        expect(draft.step).toBe('dest');
         validate(edit(spec));
+        expect(countComponents(spec)).toBeLessThanOrEqual(MAX_COMPONENTS);
+        // etapa 2: uma seta e depois uma casa escolhida direto
+        spec = s.click(u, 'mv', '1,0', null);
+        validate(edit(spec));
+        const cells = reachFor(s.state, slotId, draft);
+        const dest = cells[Math.floor(cells.length / 2)];
+        spec = s.click(u, 'sc', undefined, [`${dest.x},${dest.y}`]);
+        expect(draft.dest).toEqual(dest);
         spec = s.click(u, 'ok', undefined, null);
         validate(edit(spec));
         expect(s.humanPlans[slotId]).toBeTruthy();
       }
       // todos prontos: a sessão agenda o avanço; força para o teste ser rápido
+      const before = sent.length;
       await s.proceed();
       await s.resolveNow();
+      // a mensagem do lance vira registro: GIF e narração, sem botões
+      const record = edits[edits.length - 1];
+      expect(hasButtons(record)).toBe(false);
+      expect(record.files.map((f) => f.name)).toEqual(['lance.gif']);
+      // o lance seguinte (ou o relatório final) sai numa mensagem nova, embaixo
+      expect(sent.length).toBe(before + 1);
+      if (s.phase === 'planning') expect(hasButtons(sent[sent.length - 1])).toBe(true);
     }
     expect(s.phase).toBe('finished');
     expect(sessions.has(s.id)).toBe(false);
     const m = await prisma.match.findUniqueOrThrow({ where: { id: s.id }, include: { participants: true } });
     expect(m.status).toBe('finished');
     expect((m.turns as unknown[]).length).toBe(3);
-    // relatório com recompensas foi enviado
-    expect(sent.length).toBeGreaterThanOrEqual(2);
+    // uma mensagem por lance (3) + relatório com recompensas
+    expect(sent.length).toBe(4);
     const humans = m.participants.filter((p) => p.characterId);
     expect(humans.every((p) => p.activeTurns === 3)).toBe(true);
   });

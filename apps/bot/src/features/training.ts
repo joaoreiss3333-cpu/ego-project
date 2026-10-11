@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { ENERGY, LINEAGES, TRAINING_REWARDS } from '@ego/content';
 import {
+  PHYSICAL,
   canUsePace,
   newDuelTraining,
   newPhysicalTraining,
@@ -41,12 +42,30 @@ function duelScreen(s: Session): ScreenSpec {
   const png = renderDuelTraining(d);
   const opts = d.kind === 'drible' ? (['driblar', 'proteger', 'passar'] as const) : (['bote', 'conter', 'fechar_linha'] as const);
   const labels: Record<string, string> = { driblar: 'Driblar', proteger: 'Proteger', passar: 'Passar', bote: 'Bote', conter: 'Conter', fechar_linha: 'Fechar linha' };
+  // o que vence o quê (matriz de duelo do motor)
+  const help =
+    d.kind === 'drible'
+      ? [
+          'Você está com a bola e o defensor escolhe em segredo. Escolha a sua jogada:',
+          '-# **Driblar** vence Bote e Fechar linha · perde para Conter',
+          '-# **Proteger** (usa Físico) vence Conter e Fechar linha · empata com Bote',
+          '-# **Passar** (usa Passe) vence Bote · perde para Fechar linha',
+          '-# Empate no dado é da defesa.',
+        ]
+      : [
+          'Você defende e o atacante escolhe em segredo. Escolha a sua defesa:',
+          '-# **Bote** empata com Proteger · perde para Driblar e Passar',
+          '-# **Conter** vence Driblar · perde para Proteger',
+          '-# **Fechar linha** vence Passar · perde para Driblar e Proteger',
+          '-# Empate no dado é seu.',
+        ];
   return {
     accent: 'padrao',
     files: [file(png, 'treino.png')],
     blocks: [
       text(`### Treino de ${d.kind === 'drible' ? 'drible' : 'desarme'} · rodada ${d.round}/5`),
       images('treino.png'),
+      text(help.join('\n')),
       row(...opts.map((o) => btn(cid('tr', 'duel', s.owner, o), labels[o], ButtonStyle.Primary))),
     ],
   };
@@ -59,8 +78,15 @@ function physScreen(s: Session): ScreenSpec {
     accent: 'padrao',
     files: [file(png, 'treino.png')],
     blocks: [
-      text(`### Treino físico · rodada ${p.round}/5\nEscolha a faixa e o ritmo. Obstáculos em âmbar.`),
+      text(`### Treino físico · rodada ${p.round}/5\nChegue a **${PHYSICAL.trackLength}** de distância em 5 rodadas. Fôlego **${p.stamina}**.`),
       images('treino.png'),
+      text(
+        [
+          '**1.** Escolha a faixa (obstáculos em âmbar). **2.** Escolha o ritmo: a rodada acontece na hora.',
+          `-# **Sprint** anda ${PHYSICAL.pace.sprint.advance} (+1 com Velocidade 7+) e gasta ${PHYSICAL.pace.sprint.cost} de fôlego · **Ritmo** anda ${PHYSICAL.pace.ritmo.advance} e gasta ${PHYSICAL.pace.ritmo.cost} · **Poupar** anda ${PHYSICAL.pace.poupar.advance} e recupera ${-PHYSICAL.pace.poupar.cost}`,
+          '-# Obstáculo na faixa: teste de Físico. Passou, anda 1 a menos. Falhou, anda só 1.',
+        ].join('\n'),
+      ),
       row(...[0, 1, 2].map((l) => btn(cid('tr', 'lane', s.owner, l), `Faixa ${l + 1}${p.lane === l ? ' (atual)' : ''}`, p.lane === l ? ButtonStyle.Primary : ButtonStyle.Secondary))),
       row(
         ...(['sprint', 'ritmo', 'poupar'] as Pace[]).map((pc) =>

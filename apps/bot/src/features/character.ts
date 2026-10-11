@@ -102,8 +102,8 @@ on.component('cc', async (i, [action, owner]) => {
         accent: 'sucesso',
         blocks: [
           text(`### Avaliação iniciada\n**${c.name}**, camisa **${c.number}**. Você agora é um candidato.\nFalta uma coisa: a sua **linhagem**. Ela define seus tetos de atributo e suas habilidades.`),
-          text('-# O primeiro giro é por conta da instalação.'),
-          row(btn(cid('gc', 'open', owner), 'Fazer giro gratuito', ButtonStyle.Primary), linkBtn(siteLink(SITE_PATHS.guia('primeiros-passos')), 'Primeiros passos')),
+          text('-# O primeiro giro é por conta da instalação. Nunca jogou? Depois do giro, o **Tutorial** ensina uma partida em poucos minutos.'),
+          row(btn(cid('gc', 'open', owner), 'Fazer giro gratuito', ButtonStyle.Primary), btn(cid('tu', owner, 'start', 'novo'), 'Tutorial'), linkBtn(siteLink(SITE_PATHS.guia('primeiros-passos')), 'Primeiros passos')),
         ],
       }),
     );
