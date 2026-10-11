@@ -25,6 +25,9 @@ export default async function ReplayPage({ params }: { params: Promise<{ id: str
   const r = matchResult(data.match);
   const stats = new Map(data.match.participants.map((p) => [p.slotId, p.stats as PlayerStats | null]));
   const mySlot = data.match.participants.find((p) => p.characterId === me.id)?.slotId ?? null;
+  // partidas das regras novas guardam o relato de cada jogada; as antigas guardam os planos de cada lance
+  const rows = data.turns as unknown as { actor?: string; log?: string[] }[];
+  const isTurnos = rows.length > 0 && typeof rows[0]?.actor === 'string';
 
   return (
     <>
@@ -32,14 +35,24 @@ export default async function ReplayPage({ params }: { params: Promise<{ id: str
         code="07.R"
         section={`Partidas / ${data.match.mode} · ${KIND_LABEL[data.match.kind] ?? data.match.kind}`}
         title={r.score ? `${r.score.A} x ${r.score.B}` : 'Replay'}
-        lede={`Encerrada em ${data.match.finishedAt ? fmtDate(data.match.finishedAt) : '-'}. Reproduzida no navegador a partir da seed e dos planos finais de cada lance.`}
+        lede={`Encerrada em ${data.match.finishedAt ? fmtDate(data.match.finishedAt) : '-'}. ${isTurnos ? 'Relato de cada jogada, com as contas dos dados.' : 'Reproduzida no navegador a partir da seed e dos planos finais de cada lance.'}`}
         aside={
           <Link href={SITE_PATHS.partidas} className="btn btn--ghost btn--sm">
             Voltar ao histórico
           </Link>
         }
       />
-      <Replay setup={data.setup} turns={data.turns} mySlot={mySlot} />
+      {isTurnos ? (
+        <Panel title="Jogada a jogada" code={`${rows.length} TURNOS`}>
+          <ol style={{ margin: 0, paddingLeft: 22, display: 'grid', gap: 6, fontSize: 14 }}>
+            {rows.map((t, i) => (
+              <li key={i}>{(t.log ?? []).join(' ').replace(/\*\*/g, '')}</li>
+            ))}
+          </ol>
+        </Panel>
+      ) : (
+        <Replay setup={data.setup} turns={data.turns} mySlot={mySlot} />
+      )}
       <Panel title="Ficha da partida" code={`SEED ${data.match.seed.slice(0, 12)}`} style={{ marginTop: 20 }}>
         <div className="tablewrap">
           <table className="table">

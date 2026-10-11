@@ -164,7 +164,7 @@ on.command('partida', async (i) => {
     const sid = sessionByUser.get(i.user.id);
     if (sid) {
       sessions.get(sid)?.leave(i.user.id);
-      return i.reply(screen({ accent: 'aviso', blocks: [text('Você saiu da partida. A IA assume sua vaga até o fim, sem gastar seu Flow.')] }, { ephemeral: true }));
+      return i.reply(screen({ accent: 'aviso', blocks: [text('Você saiu da partida. A IA assume sua vaga até o fim.')] }, { ephemeral: true }));
     }
     return replyError(i, 'Você não está em lobby nem em partida.');
   }

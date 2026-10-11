@@ -1,4 +1,4 @@
-import {
+﻿import {
   ANTI_ABUSE,
   COLORS,
   MARKET_VALUE,
@@ -12,7 +12,7 @@ import {
   type MissionMetric,
   type Reward,
 } from '@ego/content';
-import type { MatchSetup, MatchState, PlanMap, SlotSetup, Team } from '@ego/engine';
+import type { MatchSetup, PlanMap, PlayerStats, SlotSetup, Team } from '@ego/engine';
 import type { Character, Prisma } from '@prisma/client';
 import { prisma, type Tx } from '../client';
 import { ERR } from '../errors';
@@ -23,6 +23,14 @@ import { trackMetrics, type MissionUpdate } from './missions';
 import { grantReward, type AppliedReward } from './progression';
 import { eloDelta, getRating } from './ranking';
 import { recordSelection, type SelectionOutcome } from './selection';
+
+/** O que o fechamento da partida lê do estado (serve para o motor antigo e para o de turnos). */
+export interface FinishableState {
+  setup: MatchSetup;
+  players: Record<string, { stats: PlayerStats }>;
+  score: Record<Team, number>;
+  winner: Team | 'draw' | null;
+}
 
 /** Monta o jogador da partida a partir do personagem (atributos com equipamento, árvore, loadout, maestria). */
 export async function slotFromCharacter(
@@ -90,7 +98,7 @@ export async function createMatchRecord(data: {
 }
 
 /** Snapshot a cada lance: estado atual + entradas finais (para sobreviver a reinício e para replay). */
-export async function saveSnapshot(matchId: string, state: MatchState, turns: PlanMap[], messageId?: string | null) {
+export async function saveSnapshot(matchId: string, state: object, turns: unknown[], messageId?: string | null) {
   await prisma.match.update({
     where: { id: matchId },
     data: {
@@ -141,7 +149,7 @@ export interface FinalizeResult {
 }
 
 /** Recompensa base da partida para um jogador (antes das travas). */
-export function baseMatchReward(state: MatchState, slotId: string, won: boolean, draw: boolean, ranked: boolean): Reward {
+export function baseMatchReward(state: FinishableState, slotId: string, won: boolean, draw: boolean, ranked: boolean): Reward {
   const st = state.players[slotId].stats;
   const R = MATCH_REWARDS;
   let xp = st.activeTurns * R.perActiveTurn.xp + st.goals * R.goal.xp + st.assists * R.assist.xp + st.readsCorrect * R.readCorrect.xp + st.duelsWon * R.duelWon.xp + st.saves * R.save.xp;
@@ -166,7 +174,7 @@ export function baseMatchReward(state: MatchState, slotId: string, won: boolean,
   return { xp: Math.round(xp), ienes: Math.round(ienes), tokens };
 }
 
-function metricsOf(state: MatchState, slotId: string, won: boolean, kind: string): Partial<Record<MissionMetric, number>> {
+function metricsOf(state: FinishableState, slotId: string, won: boolean, kind: string): Partial<Record<MissionMetric, number>> {
   const st = state.players[slotId].stats;
   return {
     gol: st.goals,
@@ -188,7 +196,7 @@ function metricsOf(state: MatchState, slotId: string, won: boolean, kind: string
  * Fecha uma partida: aplica recompensas com as travas, MMR (ranqueada),
  * maestria, estatísticas, missões e valor de mercado. Tudo no servidor.
  */
-export async function finalizeMatch(matchId: string, state: MatchState, turns: PlanMap[]): Promise<FinalizeResult> {
+export async function finalizeMatch(matchId: string, state: FinishableState, turns: unknown[]): Promise<FinalizeResult> {
   const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId }, include: { participants: true } });
   if (match.status === 'finished') throw ERR.invalid('Essa partida já foi encerrada.');
   const setup = state.setup;

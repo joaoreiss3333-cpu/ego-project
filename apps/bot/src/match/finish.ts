@@ -1,4 +1,4 @@
-import { ATTR_LABEL, GAME, findCosmetic, getEquipment, getLineage, type AttrKey } from '@ego/content';
+﻿import { ATTR_LABEL, GAME, findCosmetic, getEquipment, getLineage, type AttrKey } from '@ego/content';
 import { finalizeMatch, finishTraining, type AppliedReward, type FinalizeResult } from '@ego/db';
 import { renderResultCard } from '@ego/render';
 import { file, images, sep, text, type ScreenSpec } from '../ui';
@@ -36,10 +36,10 @@ async function resultImage(s: MatchSession) {
         rarity: getLineage(x.lineageId).rarity,
         goals: p.stats.goals,
         assists: p.stats.assists,
-        ego: p.ego,
-        chem: p.chem,
+        ego: 0,
+        chem: 0,
         dribbles: p.stats.dribblesWon,
-        reads: p.stats.readsCorrect,
+        reads: 0,
         saves: p.stats.saves,
         isKeeper: x.isKeeper,
         isBot: x.isBot,
@@ -88,7 +88,7 @@ export async function finishTraining1v1(s: MatchSession): Promise<ScreenSpec> {
   const st = s.state;
   const me = st.players[p.slotId];
   const won = st.winner === me.team;
-  const { reward, missions } = await finishTraining(p.characterId, { kind: '1v1', goals: me.stats.goals, won, reads: me.stats.readsCorrect });
+  const { reward, missions } = await finishTraining(p.characterId, { kind: '1v1', goals: me.stats.goals, won, reads: 0 });
   const png = await resultImage(s);
   const extra = missions.completed.map((m) => `-# Missão concluída: ${m.mission.name}.`).join('\n');
   return {

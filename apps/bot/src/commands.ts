@@ -91,7 +91,6 @@ export const COMMANDS = [
         .addUserOption((o) => o.setName('usuario').setDescription('Jogador').setRequired(true))
         .addIntegerOption((o) => o.setName('quantidade').setDescription('Quantidade (negativo remove)').setRequired(true)),
     )
-    .addSubcommand((s) => s.setName('debug-ia').setDescription('Liga ou desliga a depuração da IA na partida deste canal.'))
     .addSubcommand((s) =>
       s
         .setName('resetar-personagem')
@@ -103,8 +102,6 @@ export const COMMANDS = [
       s
         .setName('config')
         .setDescription('Configurações do servidor.')
-        .addIntegerOption((o) => o.setName('tempo-do-lance').setDescription('Segundos de planejamento (20 a 60)').setRequired(false).setMinValue(20).setMaxValue(60))
-        .addBooleanOption((o) => o.setName('gif').setDescription('GIF dos passos ligado').setRequired(false))
         .addStringOption((o) => o.setName('modo').setDescription('Modo para o orçamento').setRequired(false).addChoices(...modeChoices))
         .addIntegerOption((o) => o.setName('orcamento').setDescription('Teto de raridade do modo').setRequired(false).setMinValue(1).setMaxValue(50)),
     ),

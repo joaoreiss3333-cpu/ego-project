@@ -38,8 +38,8 @@ client.once(Events.ClientReady, async (c) => {
         await abortMatch(m.id, 'canal indisponível na retomada');
         continue;
       }
-      await resumeMatch(ch, m);
-      console.log(`partida ${m.id} retomada`);
+      const s = await resumeMatch(ch, m);
+      console.log(s ? `partida ${m.id} retomada` : `partida ${m.id} das regras antigas encerrada sem recompensa`);
     } catch (e) {
       console.error(`falha ao retomar ${m.id}`, e);
       await abortMatch(m.id, 'falha na retomada').catch(() => {});

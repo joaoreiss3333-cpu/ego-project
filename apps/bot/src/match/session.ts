@@ -1,26 +1,16 @@
 import type { Message, SendableChannels } from 'discord.js';
-import { MATCH_RULES, RARITY_COLORS, getLineage } from '@ego/content';
-import {
-  AFK_OVERRIDE,
-  getReactionRequests,
-  normalizePlans,
-  planBots,
-  publicRevelation,
-  reactBot,
-  resolveTurn,
-  type MatchSetup,
-  type MatchState,
-  type PlanMap,
-  type ReactionRequest,
-  type TeamDebug,
-  type TurnResult,
-} from '@ego/engine';
+import { RARITY_COLORS, getLineage } from '@ego/content';
+import { turnos, type MatchSetup } from '@ego/engine';
 import { abortMatch, createMatchRecord, saveSnapshot } from '@ego/db';
-import { arrowsFromResult, arrowsFromRevelation, overlaysFromResult, renderField, renderStepsGif, turnBanner } from '@ego/render';
+import { renderTurnosField } from '@ego/render';
 import { cid } from '../router';
 import { ButtonStyle, btn, edit, file, images, row, screen, sep, text, type Block, type ScreenSpec } from '../ui';
-import { explainBlocks } from './explain';
-import { applyClick, draftToPlan, nameOf, newDraft, panelScreen, planToDraft, type Draft } from './panel';
+import { applyClick, guessScreen, newDraft, panelScreen, type Draft } from './panel';
+
+type TState = turnos.TState;
+type Action = turnos.Action;
+type Corner = turnos.Corner;
+const { TURNOS } = turnos;
 
 export interface Participant {
   userId: string;
@@ -30,17 +20,22 @@ export interface Participant {
 
 export type FinishHandler = (s: MatchSession) => Promise<ScreenSpec | null>;
 
+/** Uma jogada guardada: serve para retomar e para reproduzir a partida. */
+export interface TurnLog {
+  actor: string;
+  action: Action;
+  guess?: Corner | null;
+  log: string[];
+}
+
 export interface SessionInit {
   guildId: string;
   channel: SendableChannels;
   setup: MatchSetup;
   participants: Participant[];
-  planSeconds: number;
-  gifEnabled: boolean;
   stageId?: string | null;
   onFinish: FinishHandler;
-  /** Estado e lances já jogados (retomada após reinício). */
-  resume?: { state: MatchState; turns: PlanMap[] };
+  resume?: { state: TState; turns: TurnLog[] };
   label: string;
 }
 
@@ -48,39 +43,34 @@ export const sessions = new Map<string, MatchSession>();
 export const sessionByChannel = new Map<string, string>();
 export const sessionByUser = new Map<string, string>();
 
+/** Pausa entre as jogadas dos bots, para dar tempo de ler (os testes zeram isto). */
+const BOT_DELAY_MS = Number(process.env.EGO_BOT_DELAY_MS ?? 1100);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export class MatchSession {
   id: string;
   guildId: string;
   channel: SendableChannels;
   setup: MatchSetup;
-  state: MatchState;
-  turns: PlanMap[] = [];
+  state: TState;
+  turns: TurnLog[] = [];
   participants: Participant[];
-  phase: 'planning' | 'reaction' | 'resolving' | 'finished' = 'planning';
-  planSeconds: number;
-  gifEnabled: boolean;
+  phase: 'turn' | 'guess' | 'busy' | 'finished' = 'busy';
   stageId: string | null;
   label: string;
   message: Message | null = null;
-  humanPlans: PlanMap = {};
   drafts = new Map<string, Draft>();
   left = new Set<string>();
   deadline = 0;
+  onFinish: FinishHandler;
+  /** Últimas linhas de narração mostradas na mensagem. */
+  recent: string[] = [];
+  private lastEvents: turnos.TEvent[] = [];
+  private pending: { actor: string; action: Action; keeperId: string } | null = null;
   private timer: NodeJS.Timeout | null = null;
   private warnTimer: NodeJS.Timeout | null = null;
-  private statusTimer: NodeJS.Timeout | null = null;
-  private pendingPlans: PlanMap = {};
-  reactions: ReactionRequest[] = [];
-  reactionDone = new Set<string>();
-  lastLog: string[] = [];
-  /** Imagem da mensagem pública: GIF do último lance ou PNG do campo. */
-  lastImage: { name: 'lance.gif' | 'campo.png'; data: Buffer } | null = null;
-  /** "Lance 3 de 8 · 1º tempo" do lance da mensagem atual. */
-  lanceLabel = '';
-  debugAi = false;
-  debugMessage: Message | null = null;
-  lastDebug: TeamDebug[] = [];
-  onFinish: FinishHandler;
+  private running = false;
+  private rerun = false;
   private warned = false;
 
   constructor(init: SessionInit) {
@@ -89,32 +79,37 @@ export class MatchSession {
     this.channel = init.channel;
     this.setup = init.setup;
     this.participants = init.participants;
-    this.planSeconds = init.planSeconds;
-    this.gifEnabled = init.gifEnabled;
     this.stageId = init.stageId ?? null;
     this.onFinish = init.onFinish;
     this.label = init.label;
-    if (init.resume) {
-      this.state = init.resume.state;
-      this.turns = init.resume.turns;
-    } else {
-      // definido em start()
-      this.state = null as unknown as MatchState;
-    }
+    this.state = init.resume?.state ?? (null as unknown as TState);
+    this.turns = init.resume?.turns ?? [];
   }
 
+  // ---------------------------------------------------------------------------
+  // Quem é quem
   // ---------------------------------------------------------------------------
 
   slotOfUser(userId: string): string | null {
     return this.participants.find((p) => p.userId === userId)?.slotId ?? null;
   }
 
-  humanSlots(): string[] {
-    return this.participants.filter((p) => !this.left.has(p.userId)).map((p) => p.slotId);
+  private userOfSlot(slotId: string): string | null {
+    return this.participants.find((p) => p.slotId === slotId)?.userId ?? null;
   }
 
-  botSlots(): string[] {
-    return this.setup.slots.filter((s) => s.isBot).map((s) => s.id);
+  /** O jogador é uma pessoa que ainda está na partida (senão joga a IA). */
+  isActiveHuman(slotId: string): boolean {
+    const u = this.userOfSlot(slotId);
+    return !!u && !this.left.has(u);
+  }
+
+  actor(): string {
+    return turnos.currentActorId(this.state);
+  }
+
+  private nm(id: string) {
+    return turnos.nameOf(this.state, id);
   }
 
   register() {
@@ -131,93 +126,93 @@ export class MatchSession {
   }
 
   private clearTimers() {
-    for (const t of [this.timer, this.warnTimer, this.statusTimer]) if (t) clearTimeout(t);
-    this.timer = this.warnTimer = this.statusTimer = null;
+    for (const t of [this.timer, this.warnTimer]) if (t) clearTimeout(t);
+    this.timer = this.warnTimer = null;
   }
 
   // ---------------------------------------------------------------------------
   // Início
   // ---------------------------------------------------------------------------
 
-  async start(initial: MatchState, isNew: boolean) {
+  async start(initial: TState, isNew: boolean) {
     this.state = initial;
     this.register();
     if (isNew) await createMatchRecord({ guildId: this.guildId, channelId: this.channel.id, mode: this.setup.mode, kind: this.setup.kind, setup: this.setup, stageId: this.stageId });
-    await this.openLance(isNew ? 'Apito inicial. A avaliação começou.' : 'Partida retomada depois de um reinício.');
-    await saveSnapshot(this.id, this.state, this.turns, this.message?.id ?? null);
+    this.recent = [isNew ? 'Apito inicial. A avaliação começou.' : 'Partida retomada depois de um reinício.'];
+    await saveSnapshot(this.id, this.state, this.turns, null).catch((e) => console.error('[partida] snapshot', e));
+    void this.step();
   }
 
   // ---------------------------------------------------------------------------
   // Mensagem pública
   // ---------------------------------------------------------------------------
 
+  private roster(): string {
+    const part = (team: 'A' | 'B') =>
+      this.setup.slots
+        .filter((s) => s.team === team)
+        .map((s) => `${s.id} #${s.number} ${s.name}`)
+        .join(' · ');
+    return `-# **A** (azul): ${part('A')}\n-# **B** (branco): ${part('B')}`;
+  }
+
   private statusLine(): string {
-    const humans = this.humanSlots();
-    const names = (xs: string[]) => xs.map((s) => nameOf(this.state, s)).join(', ');
+    const s = this.state;
+    if (this.phase === 'finished' || s.finished) return '### Partida encerrada';
     const closes = `<t:${Math.floor(this.deadline / 1000)}:R>`;
-    if (this.phase === 'planning') {
-      const ready = humans.filter((s) => this.humanPlans[s]);
-      const waiting = humans.filter((s) => !this.humanPlans[s]);
-      const lines = [`### Sua vez de planejar · fecha ${closes}`];
-      lines.push(waiting.length ? `Prontos **${ready.length}/${humans.length}** · faltam: ${names(waiting)}` : `Todos prontos. Resolvendo...`);
-      lines.push('-# Clique em **Planejar meu lance**: o painel é só seu. Quem não confirmar a tempo joga no automático.');
-      if (this.state.turn <= 2) lines.push('-# Primeira vez? Clique em **Como jogar** ou use **/tutorial**.');
-      return lines.join('\n');
+    const a = this.actor();
+    if (this.phase === 'guess' && this.pending) {
+      const k = this.userOfSlot(this.pending.keeperId);
+      return `### Goleiro${k ? ` <@${k}>` : ''}: escolha o canto · fecha ${closes}\n${this.nm(this.pending.actor)} vai finalizar. Clique em **Escolher canto**: o painel é só seu.`;
     }
-    if (this.phase === 'reaction') {
-      const pend = this.reactions.filter((r) => this.isHumanSlot(r.playerId) && !this.reactionDone.has(r.playerId));
-      return `### Janela de reação · fecha ${closes}\n${pend.length ? `${names(pend.map((r) => r.playerId))} pode ajustar o plano com uma habilidade de reação.` : 'Reações registradas.'}\n-# As setas mostram para onde cada um vai. A ação de cada um continua secreta.`;
+    const u = this.userOfSlot(a);
+    if (this.phase === 'turn' && u) {
+      const free = s.freeKick ? (s.freeKick.kind === 'penalti' ? ' · pênalti' : ' · tiro livre') : '';
+      return `### Vez de <@${u}> (${this.nm(a)})${free} · fecha ${closes}\n-# Clique em **Jogar meu turno**: o painel é só seu. Quem não joga a tempo perde a vez.${s.turnCount < 6 ? ' Primeira vez? Use **Como jogar** ou **/tutorial**.' : ''}`;
     }
-    if (this.phase === 'resolving') return '### Resolvendo o lance...';
-    return '### Partida encerrada';
+    return `### Vez de ${this.nm(a)}${this.isActiveHuman(a) ? '' : ' (bot)'}`;
   }
 
-  private isHumanSlot(slotId: string): boolean {
-    return this.participants.some((p) => p.slotId === slotId && !this.left.has(p.userId));
-  }
-
-  /** Nome do anexo mostrado: o GIF do último lance, se houver, senão a imagem do campo. Uma imagem só, em largura total. */
-  private imageName(): string {
-    return this.lastImage?.name ?? 'campo.png';
-  }
-
-  /** Mensagem do lance em andamento (planejamento, revelação, reação). */
-  publicSpec(withFiles: boolean): ScreenSpec {
+  publicSpec(withFiles: boolean, frozen = false): ScreenSpec {
     const s = this.state;
-    const sub = s.finished ? 'Fim de partida' : this.lanceLabel;
-    const blocks: Block[] = [text(`## A ${s.score.A} : ${s.score.B} B\n-# ${this.label} · ${sub}`), images(this.imageName())];
-    if (this.lastLog.length) blocks.push(text(this.lastLog.map((l) => `> ${l}`).join('\n')));
+    const sub = s.finished ? 'Fim de partida' : `Rodada ${Math.min(s.roundInHalf, s.setup.turnsPerHalf)} de ${s.setup.turnsPerHalf} · ${s.half}º tempo`;
+    const blocks: Block[] = [text(`## A ${s.score.A} : ${s.score.B} B\n-# ${this.label} · ${sub}`), images('campo.png')];
+    if (this.recent.length) blocks.push(text(this.recent.map((l) => `> ${l}`).join('\n').slice(0, 2400)));
     blocks.push(sep());
-    blocks.push(text(this.statusLine()));
-    const buttons = [];
-    if (this.phase === 'planning') buttons.push(btn(cid('mt', 'plan', this.id), 'Planejar meu lance', ButtonStyle.Primary));
-    if (this.phase === 'reaction') buttons.push(btn(cid('mt', 'react', this.id), 'Usar minha reação', ButtonStyle.Primary));
-    if (this.phase !== 'finished') buttons.push(btn(cid('mt', 'help', this.id), 'Como jogar', ButtonStyle.Secondary));
-    if (buttons.length) blocks.push(row(...buttons));
-    const lowTime = this.phase !== 'finished' && this.deadline - Date.now() < 10_000 && this.deadline > Date.now();
-    const spec: ScreenSpec = { accent: lowTime || this.warned ? 'aviso' : 'padrao', blocks };
-    if (withFiles && this.lastImage) spec.files = [file(this.lastImage.data, this.lastImage.name)];
+    if (!frozen) {
+      blocks.push(text(this.statusLine()));
+      const buttons = [];
+      if (this.phase === 'turn') buttons.push(btn(cid('mt', 'play', this.id), 'Jogar meu turno', ButtonStyle.Primary));
+      if (this.phase === 'guess') buttons.push(btn(cid('mt', 'guess', this.id), 'Escolher canto', ButtonStyle.Primary));
+      if (this.phase !== 'finished') buttons.push(btn(cid('mt', 'help', this.id), 'Como jogar', ButtonStyle.Secondary));
+      if (buttons.length) blocks.push(row(...buttons));
+    }
+    blocks.push(text(this.roster()));
+    const low = !frozen && this.phase !== 'busy' && this.phase !== 'finished' && this.deadline - Date.now() < 10_000;
+    const spec: ScreenSpec = { accent: low || this.warned ? 'aviso' : 'padrao', blocks };
+    if (withFiles) spec.files = [file(this.image(), 'campo.png')];
     return spec;
   }
 
-  /**
-   * Registro do lance resolvido: a mesma mensagem do lance vira o GIF do que
-   * aconteceu, sem botões. O lance seguinte sai numa mensagem nova, embaixo.
-   */
-  private recordSpec(prev: MatchState, result: TurnResult): ScreenSpec {
-    const s = this.state;
-    const blocks: Block[] = [text(`## A ${s.score.A} : ${s.score.B} B\n-# ${this.label} · ${this.lanceLabel} · resultado`), images(this.imageName())];
-    if (this.lastLog.length) blocks.push(text(this.lastLog.map((l) => `> ${l}`).join('\n')));
-    blocks.push(...explainBlocks(prev, result));
-    blocks.push(text(s.finished ? '-# Fim de partida. O relatório vem logo abaixo.' : '-# Lance encerrado. O próximo lance está logo abaixo.'));
-    const spec: ScreenSpec = { accent: result.goal ? 'sucesso' : 'padrao', blocks };
-    if (this.lastImage) spec.files = [file(this.lastImage.data, this.lastImage.name)];
-    return spec;
+  private image(): Buffer {
+    return renderTurnosField(this.state, { actor: this.state.finished ? null : this.actor(), events: this.lastEvents, hudRight: this.label.toUpperCase() });
   }
 
-  /** Reedita a mensagem pública. Sem `withFiles`, mantém as imagens já anexadas. */
+  /** Mensagem nova no canal (a anterior vira registro, sem botões). */
+  private async post() {
+    const old = this.message;
+    if (old) await old.edit({ components: edit(this.publicSpec(false, true)).components }).catch(() => {});
+    this.message = null;
+    try {
+      this.message = await this.channel.send(screen(this.publicSpec(true)));
+    } catch (e) {
+      console.error('[partida] falha ao postar', e);
+    }
+  }
+
+  /** Reedita a mensagem atual; se ela sumiu, posta outra. */
   async refresh(withFiles = false) {
-    if (!this.message) return;
+    if (!this.message) return this.post();
     try {
       const spec = this.publicSpec(withFiles);
       if (withFiles) await this.message.edit(edit(spec));
@@ -227,248 +222,207 @@ export class MatchSession {
     }
   }
 
-  /** Atualização de status com debounce (evita limite de edição do Discord). */
-  private refreshSoon() {
-    if (this.statusTimer) return;
-    this.statusTimer = setTimeout(() => {
-      this.statusTimer = null;
-      void this.refresh(false);
-    }, 1500);
-  }
-
   // ---------------------------------------------------------------------------
-  // Planejamento
+  // Laço de turnos
   // ---------------------------------------------------------------------------
 
-  /**
-   * Abre um lance: posta uma mensagem nova no canal (o chat fica livre durante
-   * a partida, então a mensagem do lance anterior já subiu) e começa o relógio.
-   */
-  async openLance(notice: string | null = null) {
-    this.clearTimers();
-    this.phase = 'planning';
-    this.humanPlans = {};
-    this.drafts.clear();
-    this.warned = false;
-    const s = this.state;
-    const total = s.setup.turnsPerHalf;
-    this.lanceLabel = `Lance ${Math.min(s.turnInHalf, total)} de ${total} · ${s.half}º tempo`;
-    this.lastLog = notice ? [notice] : [];
-    this.lastImage = { name: 'campo.png', data: renderField(s, { showZones: true, legend: 'match', hudRight: this.label.toUpperCase() }) };
-    this.deadline = Date.now() + this.planSeconds * 1000;
-    // até a mensagem nova sair, nenhuma edição pode cair no registro do lance anterior
-    this.message = null;
-    try {
-      this.message = await this.channel.send(screen(this.publicSpec(true)));
-    } catch (e) {
-      console.error('[partida] falha ao postar o lance', e);
-    }
-    // o relógio conta a partir do prazo mostrado na mensagem
-    const left = Math.max(0, this.deadline - Date.now());
-    // sem humanos ativos: resolve direto (todos AFK/bots)
-    if (!this.humanSlots().length) {
-      this.timer = setTimeout(() => void this.proceed(), 2500);
-    } else {
-      this.timer = setTimeout(() => void this.proceed(), left);
-      this.warnTimer = setTimeout(() => {
-        this.warned = true;
-        void this.refresh(false);
-      }, Math.max(0, left - 10_000));
-    }
-  }
-
-  draftFor(userId: string): { slotId: string; draft: Draft } {
-    const slotId = this.slotOfUser(userId);
-    if (!slotId) throw new Error('fora da partida');
-    let d = this.drafts.get(userId);
-    if (!d) {
-      const prev = this.humanPlans[slotId];
-      d = prev ? { ...planToDraft(prev), confirmed: true } : newDraft(this.state, slotId);
-      this.drafts.set(userId, d);
-    }
-    return { slotId, draft: d };
-  }
-
-  panel(userId: string): ScreenSpec {
-    const { slotId, draft } = this.draftFor(userId);
-    return panelScreen({ matchId: this.id, state: this.state, slotId, draft, mode: 'plan', deadline: this.deadline });
-  }
-
-  /** Clique no painel de planejamento. */
-  click(userId: string, action: string, arg: string | undefined, values: string[] | null): ScreenSpec {
-    const { slotId, draft } = this.draftFor(userId);
-    if (action === 'redo') {
-      draft.confirmed = false;
-      delete this.humanPlans[slotId];
-      this.refreshSoon();
-    } else {
-      const r = applyClick(this.state, slotId, draft, action, arg, values, { mode: 'plan' });
-      if (r === 'confirm') {
-        draft.confirmed = true;
-        this.humanPlans[slotId] = draftToPlan(slotId, draft);
-        this.refreshSoon();
-        if (this.humanSlots().every((s) => this.humanPlans[s])) {
-          this.clearTimers();
-          setTimeout(() => void this.proceed(), 800);
-        }
-      }
-    }
-    return panelScreen({ matchId: this.id, state: this.state, slotId, draft, mode: 'plan', deadline: this.deadline });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Revelação e reação
-  // ---------------------------------------------------------------------------
-
-  async proceed() {
-    if (this.phase !== 'planning') return;
-    this.clearTimers();
-    this.phase = 'resolving';
-    const humans = this.humanSlots();
-    const afk = this.participants.map((p) => p.slotId).filter((s) => !this.humanPlans[s] || !humans.includes(s));
-    const overrides = Object.fromEntries(afk.map((s) => [s, AFK_OVERRIDE]));
-    const ai = planBots(this.state, [...this.botSlots(), ...afk], overrides);
-    this.lastDebug = ai.debug;
-    let plans = normalizePlans(this.state, { ...ai.plans, ...Object.fromEntries(Object.entries(this.humanPlans).filter(([s]) => humans.includes(s))) });
-    const reqs = getReactionRequests(this.state, plans);
-    const rev = publicRevelation(this.state, plans);
-    for (const r of reqs) if (!this.isHumanSlot(r.playerId) || afk.includes(r.playerId)) plans = reactBot(this.state, plans, r, rev, overrides[r.playerId]);
-    this.pendingPlans = plans;
-    this.reactions = reqs.filter((r) => this.isHumanSlot(r.playerId) && !afk.includes(r.playerId));
-    this.reactionDone.clear();
-    // revelação pública
-    const png = renderField(this.state, { arrows: arrowsFromRevelation(this.state, rev), legend: 'match', hudRight: 'REVELAÇÃO', overlays: { reading: rev.filter((a) => a.reading).map((a) => a.dest) } });
-    this.lastImage = { name: 'campo.png', data: png };
-    if (this.reactions.length) {
-      this.phase = 'reaction';
-      this.deadline = Date.now() + MATCH_RULES.reactionSeconds * 1000;
-      this.lastLog = ['Revelação. Quem tem habilidade de reação pode ajustar o plano agora.'];
-      await this.refresh(true);
-      this.timer = setTimeout(() => void this.resolveNow(), MATCH_RULES.reactionSeconds * 1000);
-    } else {
-      this.lastLog = ['Revelação.'];
-      await this.refresh(true);
-      this.timer = setTimeout(() => void this.resolveNow(), 2500);
-    }
-  }
-
-  reactionFor(userId: string): { slotId: string; req: ReactionRequest; draft: Draft } | null {
-    const slotId = this.slotOfUser(userId);
-    if (!slotId) return null;
-    const req = this.reactions.find((r) => r.playerId === slotId);
-    if (!req) return null;
-    let d = this.drafts.get(`rx:${userId}`);
-    if (!d) {
-      d = planToDraft(this.pendingPlans[slotId]);
-      if (this.reactionDone.has(slotId)) d.confirmed = true;
-      this.drafts.set(`rx:${userId}`, d);
-    }
-    return { slotId, req, draft: d };
-  }
-
-  reactionPanel(userId: string): ScreenSpec | null {
-    const r = this.reactionFor(userId);
-    if (!r) return null;
-    return panelScreen({ matchId: this.id, state: this.state, slotId: r.slotId, draft: r.draft, mode: 'react', reaction: r.req, deadline: this.deadline });
-  }
-
-  reactionClick(userId: string, action: string, arg: string | undefined, values: string[] | null): ScreenSpec | null {
-    const r = this.reactionFor(userId);
-    if (!r) return null;
-    const res = applyClick(this.state, r.slotId, r.draft, action, arg, values, { mode: 'react', reaction: r.req });
-    if (res === 'confirm') {
-      const cur = this.pendingPlans[r.slotId];
-      const next = draftToPlan(r.slotId, r.draft);
-      // só o que a habilidade permite muda
-      const merged = { ...cur, ...(r.req.allowDest ? { dest: next.dest } : {}), ...(r.req.allowAction ? { action: next.action, targetPlayer: next.targetPlayer, targetCell: next.targetCell, shotZone: next.shotZone, readGuess: next.readGuess } : {}) };
-      this.pendingPlans = { ...this.pendingPlans, [r.slotId]: merged };
-      r.draft.confirmed = true;
-      this.reactionDone.add(r.slotId);
-      this.refreshSoon();
-      if (this.reactions.every((x) => this.reactionDone.has(x.playerId))) {
-        this.clearTimers();
-        setTimeout(() => void this.resolveNow(), 600);
-      }
-    }
-    return panelScreen({ matchId: this.id, state: this.state, slotId: r.slotId, draft: r.draft, mode: 'react', reaction: r.req, deadline: this.deadline });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Resolução
-  // ---------------------------------------------------------------------------
-
-  async resolveNow() {
-    if (this.phase !== 'reaction' && this.phase !== 'resolving') return;
-    this.clearTimers();
-    this.phase = 'resolving';
-    const prev = this.state;
-    let result: TurnResult;
-    try {
-      result = resolveTurn(prev, normalizePlans(prev, this.pendingPlans));
-    } catch (e) {
-      console.error('[partida] erro na resolução', e);
-      await abortMatch(this.id, 'erro na resolução');
-      this.phase = 'finished';
-      this.lastLog = ['A partida foi interrompida por um erro do sistema. Nenhuma recompensa foi aplicada.'];
-      await this.refresh(false);
-      this.unregister();
+  /** Joga os turnos dos bots até chegar a uma pessoa (ou ao fim). */
+  private async step(): Promise<void> {
+    if (this.running) {
+      // alguém jogou enquanto o laço ainda fechava o turno anterior: roda de novo no fim
+      this.rerun = true;
       return;
     }
-    this.state = result.state;
-    this.turns.push(result.plans);
-    let gif: Buffer | null = null;
-    if (this.gifEnabled) {
-      try {
-        gif = renderStepsGif(prev, result);
-      } catch (e) {
-        console.error('[partida] falha no GIF', e);
+    this.running = true;
+    try {
+      for (;;) {
+        if (this.state.finished) return await this.finish();
+        const a = this.actor();
+        if (this.isActiveHuman(a)) return await this.openTurn();
+        this.phase = 'busy';
+        await sleep(BOT_DELAY_MS);
+        if (!sessions.has(this.id)) return;
+        const waiting = await this.act(a, turnos.chooseAction(this.state, a));
+        if (waiting) return;
+      }
+    } catch (e) {
+      console.error('[partida] erro no laço de turnos', e);
+      await abortMatch(this.id, 'erro no laço de turnos').catch(() => {});
+      this.phase = 'finished';
+      this.recent = ['A partida foi interrompida por um erro do sistema. Nenhuma recompensa foi aplicada.'];
+      await this.refresh(false);
+      this.unregister();
+    } finally {
+      this.running = false;
+      if (this.rerun) {
+        this.rerun = false;
+        void this.step();
       }
     }
-    this.lastImage = gif
-      ? { name: 'lance.gif', data: gif }
-      : { name: 'campo.png', data: renderField(this.state, { arrows: arrowsFromResult(prev, result), overlays: overlaysFromResult(prev, result), legend: 'match', hudRight: 'RESULTADO', banner: turnBanner(prev, result) }) };
-    this.lastLog = result.log;
-    // a mensagem do lance vira o registro do que aconteceu (GIF, narração, sem botões)
-    if (this.message) {
-      try {
-        await this.message.edit(edit(this.recordSpec(prev, result)));
-      } catch (e) {
-        console.error('[partida] falha ao registrar o lance', e);
+  }
+
+  /** Aplica a ação. Retorna true se ficou esperando o palpite de um goleiro humano. */
+  private async act(actor: string, action: Action): Promise<boolean> {
+    if (turnos.needsKeeperGuess(action)) {
+      const k = turnos.keeperOf(this.state, turnos.other(this.state.players[actor].team));
+      if (k && this.isActiveHuman(k.id)) {
+        await this.openGuess(actor, action, k.id);
+        return true;
       }
     }
-    if (this.debugAi) await this.postDebug(prev.turn);
-    if (this.state.finished) {
-      await saveSnapshot(this.id, this.state, this.turns).catch((e) => console.error('[partida] snapshot', e));
-      return this.finish();
+    await this.commit(actor, action, undefined);
+    return false;
+  }
+
+  private async commit(actor: string, action: Action, guess: Corner | null | undefined) {
+    this.clearTimers();
+    this.phase = 'busy';
+    this.pending = null;
+    this.warned = false;
+    const bot = !this.isActiveHuman(actor);
+    let res: turnos.ActionResult;
+    try {
+      res = turnos.applyAction(this.state, actor, action, { keeperGuess: guess });
+    } catch (e) {
+      if (!bot) throw e;
+      console.error('[partida] ação de bot inválida, passando a vez', e);
+      res = turnos.applyAction(this.state, actor, { kind: 'passar' });
     }
-    await this.openLance();
+    this.state = res.state;
+    this.turns.push({ actor, action, ...(guess !== undefined ? { guess } : {}), log: res.log });
+    this.recent = [...this.recent, ...res.log].slice(-7);
+    this.lastEvents = res.events;
+    const big = !!res.goal || res.events.some((e) => e.t === 'halftime') || this.state.finished;
+    if (big || !this.message) await this.post();
+    else await this.refresh(true);
     await saveSnapshot(this.id, this.state, this.turns, this.message?.id ?? null).catch((e) => console.error('[partida] snapshot', e));
   }
 
-  private async postDebug(turn: number) {
-    const lines: string[] = [`### Depuração da IA · lance ${turn}`];
-    for (const t of this.lastDebug) {
-      if (!t.bots.length) continue;
-      lines.push(`**Time ${t.team}** · plano: ${t.plan}${t.combo ? ` · combo: ${t.combo}` : ''}`);
-      for (const b of t.bots) {
-        lines.push(`- ${b.name} (${b.role}, ${b.ms} ms)`);
-        for (const o of b.options) lines.push(`  - ${o.label} · ${o.score}`);
-      }
-    }
-    const spec: ScreenSpec = { accent: 'aviso', blocks: [text(lines.join('\n').slice(0, 3800))] };
-    try {
-      // uma só por vez, sempre logo abaixo do lance a que se refere
-      await this.debugMessage?.delete().catch(() => {});
-      this.debugMessage = await this.channel.send(screen(spec));
-    } catch (e) {
-      console.error('[debug-ia]', e);
-    }
+  private async openTurn() {
+    this.phase = 'turn';
+    this.warned = false;
+    this.drafts.clear();
+    this.deadline = Date.now() + TURNOS.turnSeconds * 1000;
+    const at = this.stamp();
+    await this.post();
+    // a pessoa pode ter jogado enquanto a mensagem saía: aí este relógio já não vale
+    if (this.stamp() === at) this.arm();
+    await saveSnapshot(this.id, this.state, this.turns, this.message?.id ?? null).catch(() => {});
   }
+
+  private async openGuess(actor: string, action: Action, keeperId: string) {
+    this.pending = { actor, action, keeperId };
+    this.phase = 'guess';
+    this.warned = false;
+    this.deadline = Date.now() + TURNOS.keeperSeconds * 1000;
+    const at = this.stamp();
+    await this.refresh(false);
+    if (this.stamp() === at) this.arm();
+  }
+
+  /** Identifica o momento da partida (fase + turno): relógios velhos não disparam. */
+  private stamp(): string {
+    return `${this.phase}:${this.state.turnCount}`;
+  }
+
+  /** Relógio do turno atual (ou do palpite). */
+  private arm() {
+    this.clearTimers();
+    const left = Math.max(0, this.deadline - Date.now());
+    const at = this.stamp();
+    this.timer = setTimeout(() => {
+      if (this.stamp() === at) void this.timeout();
+    }, left);
+    this.warnTimer = setTimeout(() => {
+      if (this.stamp() !== at) return;
+      this.warned = true;
+      void this.refresh(false);
+    }, Math.max(0, left - 10_000));
+  }
+
+  /** Acabou o tempo: perde a vez (ou o goleiro não adivinha). */
+  private async timeout() {
+    if (this.phase === 'guess' && this.pending) {
+      const p = this.pending;
+      await this.commit(p.actor, p.action, null).catch((e) => console.error(e));
+      return void this.step();
+    }
+    if (this.phase !== 'turn') return;
+    await this.commit(this.actor(), { kind: 'passar' }, undefined).catch((e) => console.error(e));
+    void this.step();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Painéis (mensagens só do jogador)
+  // ---------------------------------------------------------------------------
+
+  private draftFor(userId: string): Draft {
+    let d = this.drafts.get(userId);
+    if (!d) {
+      d = newDraft();
+      this.drafts.set(userId, d);
+    }
+    return d;
+  }
+
+  /** O jogador da vez. `null` se não for a vez dele. */
+  turnOf(userId: string): string | null {
+    if (this.phase !== 'turn') return null;
+    const slot = this.slotOfUser(userId);
+    return slot && slot === this.actor() && !this.left.has(userId) ? slot : null;
+  }
+
+  panel(userId: string): ScreenSpec {
+    const actorId = this.turnOf(userId)!;
+    return panelScreen({ matchId: this.id, state: this.state, actorId, draft: this.draftFor(userId), deadline: this.deadline });
+  }
+
+  /** Clique no painel. Devolve a próxima tela, ou a ação confirmada. */
+  click(userId: string, verb: string, arg: string | undefined, values: string[] | null): { screen: ScreenSpec } | { action: Action } {
+    const actorId = this.turnOf(userId)!;
+    const draft = this.draftFor(userId);
+    const r = applyClick(this.state, actorId, draft, verb, arg, values);
+    if (r.kind === 'act') return { action: r.action };
+    return { screen: panelScreen({ matchId: this.id, state: this.state, actorId, draft, deadline: this.deadline }) };
+  }
+
+  /** A pessoa confirmou a jogada. */
+  async humanAct(userId: string, action: Action) {
+    const actor = this.turnOf(userId);
+    if (!actor) throw new Error('Não é mais a sua vez.');
+    this.clearTimers();
+    let waiting: boolean;
+    try {
+      waiting = await this.act(actor, action);
+    } catch (e) {
+      this.phase = 'turn';
+      this.arm();
+      throw e;
+    }
+    if (!waiting) void this.step();
+  }
+
+  guessPanel(userId: string): ScreenSpec | null {
+    if (this.phase !== 'guess' || !this.pending) return null;
+    if (this.slotOfUser(userId) !== this.pending.keeperId || this.left.has(userId)) return null;
+    return guessScreen({ matchId: this.id, state: this.state, shooterId: this.pending.actor, keeperId: this.pending.keeperId, deadline: this.deadline });
+  }
+
+  async guess(userId: string, corner: Corner) {
+    if (!this.guessPanel(userId)) throw new Error('A janela do palpite já fechou.');
+    const p = this.pending!;
+    this.clearTimers();
+    await this.commit(p.actor, p.action, corner);
+    void this.step();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fim
+  // ---------------------------------------------------------------------------
 
   async finish() {
     this.clearTimers();
     this.phase = 'finished';
-    // o último lance já está registrado na própria mensagem; o relatório sai embaixo
     try {
       const spec = await this.onFinish(this);
       if (spec) await this.channel.send(screen(spec));
@@ -483,18 +437,22 @@ export class MatchSession {
   async abort(reason: string) {
     this.clearTimers();
     this.phase = 'finished';
-    this.lastLog = [reason];
+    this.recent = [reason];
     await abortMatch(this.id, reason);
     await this.refresh(false);
     this.unregister();
   }
 
+  /** Sai da partida: a IA assume a vaga até o fim. */
   leave(userId: string) {
     this.left.add(userId);
-    const slot = this.slotOfUser(userId);
-    if (slot) delete this.humanPlans[slot];
+    this.drafts.delete(userId);
     sessionByUser.delete(userId);
-    this.refreshSoon();
+    const slot = this.slotOfUser(userId);
+    const myTurn = this.phase === 'turn' && slot === this.actor();
+    const myGuess = this.phase === 'guess' && this.pending?.keeperId === slot;
+    if (myTurn || myGuess) void this.timeout();
+    else void this.refresh(false);
   }
 
   teamColor(team: 'A' | 'B'): string {

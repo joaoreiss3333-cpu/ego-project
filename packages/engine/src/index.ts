@@ -16,3 +16,4 @@ export { DIFFICULTY_ORDER } from './ai/profile';
 export type { DifficultyProfile, PersonalityWeights } from './ai/profile';
 export type { Role, TeamPlanKind, Directive } from './ai/coordinator';
 export * from './training';
+export * as turnos from './turnos';

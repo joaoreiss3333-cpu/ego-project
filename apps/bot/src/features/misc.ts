@@ -27,6 +27,7 @@ import {
   tokensOf,
 } from '@ego/db';
 import type { MatchMode } from '@ego/content';
+import { turnos } from '@ego/engine';
 import { siteLink } from '../env';
 import { sessionByChannel, sessions } from '../match/session';
 import { cid, on } from '../router';
@@ -216,28 +217,22 @@ on.command('admin', async (i) => {
     await resetCharacter(i.guildId, i.user.id, u.id);
     return ok(`Personagem de <@${u.id}> apagado. Ele pode criar outro com /criar-personagem.`);
   }
-  if (sub === 'debug-ia' || sub === 'encerrar-partida') {
+  if (sub === 'encerrar-partida') {
     const sid = sessionByChannel.get(i.channelId);
     const s = sid ? sessions.get(sid) : null;
     if (!s) return replyError(i, 'Não há partida rodando neste canal.');
-    if (sub === 'debug-ia') {
-      s.debugAi = !s.debugAi;
-      return ok(`Depuração da IA ${s.debugAi ? 'ligada' : 'desligada'} nesta partida. A cada lance sai o plano do time, a função e as 3 melhores opções de cada bot.`);
-    }
     await s.abort('Partida encerrada pela gerência. Sem recompensas.');
     return ok('Partida encerrada sem recompensas.');
   }
   if (sub === 'config') {
-    const planSeconds = i.options.getInteger('tempo-do-lance') ?? undefined;
-    const gif = i.options.getBoolean('gif') ?? undefined;
     const mode = (i.options.getString('modo') ?? undefined) as MatchMode | undefined;
     const budget = i.options.getInteger('orcamento') ?? undefined;
     if (budget !== undefined && !mode) return replyError(i, 'Informe o modo junto com o orçamento.');
-    const cur = planSeconds === undefined && gif === undefined && budget === undefined ? await guildSettings(i.guildId) : await updateGuildSettings(i.guildId, i.user.id, { planSeconds, gifEnabled: gif, mode, budget });
+    const cur = budget === undefined ? await guildSettings(i.guildId) : await updateGuildSettings(i.guildId, i.user.id, { mode, budget });
     const budgets = Object.entries(cur.rarityBudget)
       .map(([m, v]) => `${m}: ${v}`)
       .join(' · ');
-    return ok(`### Configuração do servidor\nTempo do lance: **${cur.planSeconds}s**\nGIF dos passos: **${cur.gifEnabled ? 'ligado' : 'desligado'}**\nOrçamento de raridade: ${budgets}`);
+    return ok(`### Configuração do servidor\nOrçamento de raridade: ${budgets}\n-# O tempo do turno é fixo (${turnos.TURNOS.turnSeconds} s) nas regras novas.`);
   }
 });
 

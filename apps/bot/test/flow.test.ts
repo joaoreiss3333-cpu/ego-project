@@ -1,10 +1,13 @@
-import { afterAll, describe, expect, it } from 'vitest';
+﻿import { afterAll, describe, expect, it } from 'vitest';
+import { turnos } from '@ego/engine';
 import { createCharacter, prisma, spin } from '@ego/db';
-import { reachFor } from '../src/match/panel';
 import { startMatch } from '../src/match/start';
 import { sessions } from '../src/match/session';
 import { profileScreen } from '../src/features/profile';
-import { MAX_COMPONENTS, countComponents, edit, screen, type Payload, type ScreenSpec } from '../src/ui';
+import { MAX_COMPONENTS, countComponents, screen, type Payload } from '../src/ui';
+
+// os bots jogam sem pausa nos testes
+process.env.EGO_BOT_DELAY_MS = '0';
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const d = HAS_DB ? describe : describe.skip;
@@ -16,22 +19,7 @@ function validate(p: Payload) {
   const all = JSON.stringify(p.components.map((c) => c.toJSON()));
   const texts = [...all.matchAll(/"content":"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string);
   expect(texts.reduce((a, t) => a + t.length, 0)).toBeLessThanOrEqual(4000);
-  for (const c of p.components) {
-    const json = c.toJSON() as { components: { type: number; components?: { custom_id?: string }[] }[] };
-    const walk = (x: unknown) => {
-      if (!x || typeof x !== 'object') return;
-      const o = x as Record<string, unknown>;
-      if (typeof o.custom_id === 'string') expect((o.custom_id as string).length).toBeLessThanOrEqual(100);
-      for (const v of Object.values(o)) if (Array.isArray(v)) v.forEach(walk);
-    };
-    walk(json);
-  }
-}
-
-/** Algum botão ou menu na mensagem? */
-function hasButtons(p: Payload): boolean {
-  const json = JSON.stringify(p.components.map((c) => c.toJSON()));
-  return json.includes('"custom_id"');
+  for (const m of all.matchAll(/"custom_id":"([^"]*)"/g)) expect(m[1].length).toBeLessThanOrEqual(100);
 }
 
 function fakeChannel() {
@@ -57,6 +45,14 @@ function fakeChannel() {
   return { channel, sent, edits };
 }
 
+const until = async (cond: () => boolean, ms = 20_000) => {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error('tempo esgotado esperando a partida: ' + [...sessions.values()].map((x) => x.phase + ' actor=' + x.actor() + ' turn=' + x.state.turnCount + ' fin=' + x.state.finished).join(' | '));
+    await new Promise((r) => setTimeout(r, 5));
+  }
+};
+
 d('bot: fluxo completo sem Discord', () => {
   afterAll(async () => {
     await prisma.character.deleteMany({ where: { discordId: { startsWith: PREFIX } } });
@@ -73,14 +69,14 @@ d('bot: fluxo completo sem Discord', () => {
     }
   });
 
-  it('partida 1v1 casual: painel, confirmação, revelação, resolução e fechamento', async () => {
+  it('partida 1v1 casual: dois jogadores usam o painel, os bots jogam e a partida fecha no banco', async () => {
     const chars = [];
     for (const n of [1, 2]) {
       const c = await createCharacter({ discordId: `${PREFIX}${n}`, guildId: 'g-bot', discordName: 'x', name: `Jogador ${n}`, number: n, position: 'atacante', foot: 'direito', tokenColor: '#1F6BFF' });
       await spin(c.id);
       chars.push((await prisma.character.findUniqueOrThrow({ where: { id: c.id } }))!);
     }
-    const { channel, sent, edits } = fakeChannel();
+    const { channel, sent } = fakeChannel();
     const s = await startMatch({
       guildId: 'g-bot',
       channel: channel as never,
@@ -91,54 +87,58 @@ d('bot: fluxo completo sem Discord', () => {
       rules: { turnsPerHalf: 3, halves: 1, firstTo: null },
       label: '1v1 · Casual',
     });
-    expect(sent.length).toBe(1);
-    let guard = 0;
-    while (s.phase !== 'finished' && guard++ < 10) {
-      expect(s.phase).toBe('planning');
-      for (const c of chars) {
-        const u = c.discordId;
-        const panel: ScreenSpec = s.panel(u);
-        expect(countComponents(panel)).toBeLessThanOrEqual(MAX_COMPONENTS);
-        validate(edit(panel));
-        const slotId = s.slotOfUser(u)!;
-        const draft = s.draftFor(u).draft;
-        const holder = s.state.ball.holder === slotId;
-        // etapa 1: ação (menu) avança sozinha para o destino
-        let spec = s.click(u, 'act', undefined, [holder ? 'conduzir' : 'mover']);
-        expect(draft.step).toBe('dest');
-        validate(edit(spec));
-        expect(countComponents(spec)).toBeLessThanOrEqual(MAX_COMPONENTS);
-        // etapa 2: uma seta e depois uma casa escolhida direto
-        spec = s.click(u, 'mv', '1,0', null);
-        validate(edit(spec));
-        const cells = reachFor(s.state, slotId, draft);
-        const dest = cells[Math.floor(cells.length / 2)];
-        spec = s.click(u, 'sc', undefined, [`${dest.x},${dest.y}`]);
-        expect(draft.dest).toEqual(dest);
-        spec = s.click(u, 'ok', undefined, null);
-        validate(edit(spec));
-        expect(s.humanPlans[slotId]).toBeTruthy();
+    let plays = 0;
+    let panels = 0;
+    while (!s.state.finished) {
+      await until(() => s.phase === 'turn' || s.phase === 'guess' || s.state.finished);
+      if (s.state.finished) break;
+      if (s.phase === 'guess') {
+        // goleiro humano não há neste teste, mas o painel de palpite precisa existir só para ele
+        throw new Error('palpite inesperado');
       }
-      // todos prontos: a sessão agenda o avanço; força para o teste ser rápido
-      const before = sent.length;
-      await s.proceed();
-      await s.resolveNow();
-      // a mensagem do lance vira registro: GIF e narração, sem botões
-      const record = edits[edits.length - 1];
-      expect(hasButtons(record)).toBe(false);
-      expect(record.files.map((f) => f.name)).toEqual(['lance.gif']);
-      // o lance seguinte (ou o relatório final) sai numa mensagem nova, embaixo
-      expect(sent.length).toBe(before + 1);
-      if (s.phase === 'planning') expect(hasButtons(sent[sent.length - 1])).toBe(true);
+      const actor = s.actor();
+      const userId = s.participants.find((p) => p.slotId === actor)!.userId;
+      // o painel abre e é válido
+      validate(screen(s.panel(userId)));
+      panels++;
+      // joga a decisão da IA pelo caminho real dos humanos
+      await s.humanAct(userId, turnos.chooseAction(s.state, actor));
+      plays++;
     }
+    await until(() => !sessions.has(s.id));
     expect(s.phase).toBe('finished');
-    expect(sessions.has(s.id)).toBe(false);
+    expect(panels).toBe(plays);
     const m = await prisma.match.findUniqueOrThrow({ where: { id: s.id }, include: { participants: true } });
     expect(m.status).toBe('finished');
-    expect((m.turns as unknown[]).length).toBe(3);
-    // uma mensagem por lance (3) + relatório com recompensas
-    expect(sent.length).toBe(4);
+    expect((m.turns as unknown[]).length).toBe(s.turns.length);
+    expect((m.snapshot as { engine?: string }).engine).toBe('turnos');
     const humans = m.participants.filter((p) => p.characterId);
-    expect(humans.every((p) => p.activeTurns === 3)).toBe(true);
+    expect(humans.length).toBe(2);
+    expect(humans.every((p) => p.activeTurns === 3 && p.totalTurns === 3)).toBe(true);
+    // relatório final com recompensas
+    expect(sent.length).toBeGreaterThan(2);
+  });
+
+  it('quem não joga a tempo só perde a vez', async () => {
+    const c = await createCharacter({ discordId: `${PREFIX}3`, guildId: 'g-bot', discordName: 'x', name: 'Jogador 3', number: 3, position: 'atacante', foot: 'direito', tokenColor: '#1F6BFF' });
+    await spin(c.id);
+    const ch = (await prisma.character.findUniqueOrThrow({ where: { id: c.id } }))!;
+    const { channel } = fakeChannel();
+    const s = await startMatch({
+      guildId: 'g-bot',
+      channel: channel as never,
+      mode: '1v1',
+      kind: 'casual',
+      teamA: [{ userId: ch.discordId, character: ch }],
+      teamB: [],
+      rules: { turnsPerHalf: 1, halves: 1, firstTo: null },
+      label: '1v1 · Casual',
+    });
+    await until(() => s.phase === 'turn');
+    const slot = s.actor();
+    s.leave(ch.discordId); // sair equivale a estourar o tempo: a vez passa e a IA assume
+    await until(() => !sessions.has(s.id));
+    expect(s.state.finished).toBe(true);
+    expect(s.state.players[slot].stats.totalTurns).toBeGreaterThan(0);
   });
 });
